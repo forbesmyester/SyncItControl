@@ -1,0 +1,72 @@
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Test Script</title>
+    <link href="node_modules/mocha/mocha.css" rel="stylesheet"/>
+</head>
+<body>
+  <div id="mocha"></div>
+</body>
+    <script src="node_modules/jquery/dist/jquery.js"></script>
+    <script src="node_modules/mocha/mocha.js"></script>
+    <script src="node_modules/requirejs/require.js"></script>
+    <script src="node_modules/expect.js/expect.js"></script>
+    
+    <script>
+    	
+		require.config({
+			baseUrl: '.',
+			paths: {
+				syncit: "node_modules/syncit",
+				mout: "node_modules/mout/src"
+			},
+			packages: [
+				{
+					name: 'when',
+					location: 'node_modules/when',
+					main: 'when'
+				},
+				{
+					name: 'add-events',
+					location: 'node_modules/add-events',
+					main: 'index'
+				},
+				{
+					name: 'transition-state',
+					location: 'node_modules/transition-state',
+					main: 'index'
+				},
+				{
+					name: 'getTLIdEncoderDecoder',
+					location: 'node_modules/get_tlid_encoder_decoder',
+					main: 'index'
+				},
+				{
+					name: 'eventsource-monitor',
+					location: 'node_modules/eventsource-monitor',
+					main: 'index'
+				}
+			],
+			shim: {
+				// pagejs: { deps: [], exports: 'page' },
+			}
+		});
+    	
+        $(document).ready(function() {
+            function assert(expr, msg) {
+                if (!expr) throw new Error(msg || 'failed');
+            }
+            require.config({
+                baseUrl: '.',
+            });
+                
+            mocha.setup('bdd')
+            mocha.globals(['Module']);
+            require(['./test/index'], function(index) {
+                mocha.run();
+            });
+        });
+    </script>
+
+</html>
+
