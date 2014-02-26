@@ -4,22 +4,28 @@
 		module.exports = factory(
 			require('add-events'),
 			require('transition-state'),
+			require('./syncItCallbackToPromise'),
+			require('mout/array/map'),
+			require('mout/object/map'),
 			require('when/keys'),     // TODO: Remove... I think when but it's
-			require('when/callbacks'),// not __really__ required
+			require('when/node/function'),// not __really__ required
 			require('syncit/Constant')
 		);
 	} else if (typeof define === 'function' && define.amd) {
 		define([
 			'add-events',
 			'transition-state',
+			'./syncItCallbackToPromise',
+			'mout/array/map',
+			'mout/object/map',
 			'when/keys',
-			'when/callbacks',
+			'when/node/function',
 			'syncit/Constant'
 		],factory);
 	} else {
 		throw "Not Tested";
 	}
-}(this, function (addEvents, TransitionState, whenKeys, whenCallbacks, SyncItConstant) {
+}(this, function (addEvents, TransitionState, syncItCallbackToPromise, arrayMap, objectMap, whenKeys, whenNode, SyncItConstant) {
 
 "use strict";
 
@@ -189,7 +195,7 @@ Cls.prototype.connect = function() {
 			i,
 			l,
 			downloadDataset = function(dataset) {
-				return whenCallbacks.call(
+				return whenNode.call(
 					downloadDatasetFunc,
 					dataset,
 					stateConfig.getItem(dataset)
@@ -201,8 +207,11 @@ Cls.prototype.connect = function() {
 		}
 		
 		whenKeys.all(downloadPromises).done(
-			function(data) {
-				return next(null, data);
+			function(allData) {
+				var retData = objectMap(allData, function(ar) {
+					return { data: ar[0], toVersion: ar[1] };
+				});
+				return next(null, retData);
 			},
 			function(err) {
 				next(err);
@@ -227,6 +236,22 @@ Cls.prototype.connect = function() {
 	eventSourceMonitor.on('connected', function() {
 		transitionWithinStatePath('CONNECTING', 'DOWNLOADING');
 	});
+	
+	var feedOneDatasetIntoSyncIt = function(dataset, queueitems, toDatasetVersion, next) {
+		syncIt.feed(
+			queueitems,
+			function() {
+				throw new Error("CONFLICT: FAIL FAIL FAIL");
+			},
+			function(err) {
+				if (err != SyncItConstant.Error.OK) {
+					return next(err);
+				}
+				stateConfig.setItem(dataset, toDatasetVersion);
+				next(err);
+			}
+		);
+	};
 	
 	var processStateChange = function(oldState, currentState) {
 		
@@ -257,12 +282,31 @@ Cls.prototype.connect = function() {
 		case 'MISSING_DATASET__DOWNLOADING':  /* falls through */
 		case 'ADDING_DATASET__DOWNLOADING':  /* falls through */
 			emit('online', getBaseEventObj());
-			doDownloads(datasets, function(err) {
-				if (err) {
-					return transitionState.change('RESET');
-				}
-				// TODO: FEED HERE
-				transitionState.change('PUSHING_DISCOVERY');
+			doDownloads(datasets, function(err, datasetsData) {
+				
+				var promises = objectMap(
+					datasetsData,
+					function(oneData, dataset) {
+						return syncItCallbackToPromise(
+							syncIt,
+							feedOneDatasetIntoSyncIt,
+							[0],
+							dataset,
+							oneData.data,
+							oneData.toVersion
+						);
+					}
+				);
+				
+				whenKeys.all(promises).done(
+					function() {
+						transitionState.change('PUSHING_DISCOVERY');
+					},
+					function() {
+						return transitionState.change('RESET');
+					}
+				);
+				
 			});
 			break;
 		case 'PUSHING_DISCOVERY':

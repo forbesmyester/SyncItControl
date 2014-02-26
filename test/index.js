@@ -104,13 +104,31 @@ describe('SyncItControl',function() {
 		
 		var downloadDatasetFunc = function(dataset, from, next) {
 			eventOrder.push('downloads-started');
-			return next(null, [dataset, from]);
+			var downloadedData = {
+				"queueitems":[
+					{
+						"s":"cars",
+						"k":"subaru",
+						"b":0,
+						"m":"another",
+						"u":{"Color":"Red"},
+						"o":"set",
+						"t":1393446188224
+					}
+				],
+				"to":"cars.Subaru@1"
+			};
+			return next(
+				null,
+				downloadedData.queueitems,
+				downloadedData.to
+			);
 		};
 		var uploadChangeFunc = function() { expect().fail(); };
 		var conflictResolutionFunction = function() { expect().fail(); };
-		var initialDatasets = ['dataset-' + userId];
+		var initialDatasets = ['cars'];
 		
-		stateConfig.setItem(initialDatasets[0], 'a');
+		stateConfig.setItem(initialDatasets[0], null);
 		
 		var syncItControl = new SyncItControl(
 			syncIt,
@@ -142,7 +160,11 @@ describe('SyncItControl',function() {
 				'downloads-started',
 				'synched'
 			]);
-			done();
+			syncIt.get('cars', 'subaru', function(e, data) {
+				expect(e).to.equal(0);
+				expect(data).to.eql({"Color":"Red"});
+				done();
+			});
 		});
 		
 		syncItControl.connect();
