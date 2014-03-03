@@ -37,7 +37,6 @@
 	} else {
 		// Browser globals (root is window)
 		throw "Not currently tested...";
-		root.returnExports = factory(expect, root.returnFuncToAsyncFunc);
 	}
 }(this, function (expect, getTLIdEncoderDecoder, EventSourceMonitor, SyncIt, 
 	SyncItBuffer, FakeLocalStorage, SyncLocalStorage, AsyncLocalStorage,
@@ -116,7 +115,7 @@ describe('SyncItControl',function() {
 						"t":1393446188224
 					}
 				],
-				"to":"cars.Subaru@1"
+				"to":"cars@1"
 			};
 			return next(
 				null,
@@ -124,7 +123,9 @@ describe('SyncItControl',function() {
 				downloadedData.to
 			);
 		};
-		var uploadChangeFunc = function() { expect().fail(); };
+		var uploadChangeFunc = function(queueitem, next) {
+			next(null, "cars@2");
+		};
 		var conflictResolutionFunction = function() { expect().fail(); };
 		var initialDatasets = ['cars'];
 		
@@ -140,6 +141,12 @@ describe('SyncItControl',function() {
 			initialDatasets
 		);
 		
+		syncItControl.on('advanced-queueitem', function(queueitem) {
+			expect(queueitem.k).to.equal('bmw');
+			expect(stateConfig.getItem(initialDatasets[0])).to.equal('cars@2');
+			done();
+		});
+		
 		eventSourceMonitor.on('added-managed-connection', function() {
 			eventOrder.push('added-managed-connection');
 			eventSources[0].open();
@@ -148,6 +155,11 @@ describe('SyncItControl',function() {
 		syncItControl.on('available', function(evt) {
 			eventOrder.push('available');
 			expect(evt.datasets).to.eql(initialDatasets);
+		});
+		
+		syncItControl.on('uploaded-queueitem', function(queueitem, to) {
+			expect(queueitem.k).to.equal('bmw');
+			expect(to).to.equal('cars@2');
 		});
 		
 		syncItControl.on('synched', function(evt) {
@@ -163,7 +175,9 @@ describe('SyncItControl',function() {
 			syncIt.get('cars', 'subaru', function(e, data) {
 				expect(e).to.equal(0);
 				expect(data).to.eql({"Color":"Red"});
-				done();
+				syncIt.set('cars', 'bmw', {Color: 'blue'}, function(e) {
+					expect(e).to.equal(0);
+				});
 			});
 		});
 		

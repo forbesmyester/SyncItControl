@@ -7,6 +7,7 @@
 			require('./syncItCallbackToPromise'),
 			require('mout/array/map'),
 			require('mout/object/map'),
+			require('emitting-queue'),
 			require('when/keys'),     // TODO: Remove... I think when but it's
 			require('when/node/function'),// not __really__ required
 			require('syncit/Constant')
@@ -18,6 +19,7 @@
 			'./syncItCallbackToPromise',
 			'mout/array/map',
 			'mout/object/map',
+			'emitting-queue',
 			'when/keys',
 			'when/node/function',
 			'syncit/Constant'
@@ -25,7 +27,7 @@
 	} else {
 		throw "Not Tested";
 	}
-}(this, function (addEvents, TransitionState, syncItCallbackToPromise, arrayMap, objectMap, whenKeys, whenNode, SyncItConstant) {
+}(this, function (addEvents, TransitionState, syncItCallbackToPromise, arrayMap, objectMap, EmittingQueue, whenKeys, whenNode, SyncItConstant) {
 
 "use strict";
 
@@ -144,7 +146,10 @@ Cls.prototype.connect = function() {
 		eventSourceMonitorStarted = false,
 		emit = this._emit.bind(this),
 		downloadDatasetFunc = this._downloadDatasetFunc,
-		syncIt = this._syncIt;
+		uploadChangeFunc = this._uploadChangeFunc,
+		syncIt = this._syncIt,
+		uploadQueue
+	;
 	
 	var allDatasetKnown = function() {
 		var i, l,
@@ -337,13 +342,47 @@ Cls.prototype.connect = function() {
 		processStateChange(null, state);
 	});
 	
+	var queueitemAdvanced = function(e, dataset, datakey, queueitem) {
+		if (e !== SyncItConstant.Error.OK) {
+			emit(
+				'error-advancing-queueitem',
+				Array.prototype.slice.call(arguments, 0)
+			);
+			return transitionState.change(
+				'ERROR'
+			);
+		}
+		emit('advanced-queueitem', queueitem);
+	};
+	
+	var uploadError = function(e, queueitem) {
+		uploadQueue.empty();
+		uploadQueue.resume();
+		emit('error-uploading-queueitem', e, queueitem);
+		transitionState.change('ERROR');
+	};
+	
+	uploadQueue = new EmittingQueue(uploadChangeFunc);
+	uploadQueue.on('item-processed', function(queueitem, to) {
+		stateConfig.setItem(queueitem.s, to);
+		emit('uploaded-queueitem', queueitem, to);
+		syncIt.advance(queueitemAdvanced);
+	});
+	
+	uploadQueue.on('item-could-not-be-processed', uploadError);
+	syncIt.listenForAddedToPath(function(dataset, datakey, queueitem) {
+		uploadQueue.push(queueitem);
+	});
+	
 	transitionState.start();
 	
 };
 
 addEvents(Cls, [
 	'offline', 'online', 'pushing', 'synched', 'adding-new-dataset',
-	'added-new-dataset', 'removed-dataset', 'available', 'unavailable'
+	'added-new-dataset', 'removed-dataset', 'available', 'unavailable',
+	'uploaded-queueitem', 'advanced-queueitem',
+	'error-uploading-queueitem', 'error-advancing-queueitem'
 ]);
 
 
