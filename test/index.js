@@ -141,10 +141,35 @@ describe('SyncItControl',function() {
 			initialDatasets
 		);
 		
+		var attemptToMessage = function() {
+			eventSources[0].pretendMessage({
+				to: 'cars@3',
+				queueitem: {
+					"s":"cars",
+					"k":"subaru",
+					"b":1,
+					"m":"another",
+					"u":{ "$set": {"Drive":"4WD"} },
+					"o":"update",
+					"t":1393446188229
+				}
+			});
+			syncIt.listenForFed(function() {
+				syncIt.get('cars', 'subaru', function(e, data) {
+					expect(e).to.equal(0);
+					expect(data).to.eql({
+						'Drive': '4WD',
+						'Color': 'Red'
+					});
+					done();
+				});
+			});
+		};
+		
 		syncItControl.on('advanced-queueitem', function(queueitem) {
 			expect(queueitem.k).to.equal('bmw');
 			expect(stateConfig.getItem(initialDatasets[0])).to.equal('cars@2');
-			done();
+			attemptToMessage();
 		});
 		
 		eventSourceMonitor.on('added-managed-connection', function() {

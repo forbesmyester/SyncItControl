@@ -242,6 +242,19 @@ Cls.prototype.connect = function() {
 		transitionWithinStatePath('CONNECTING', 'DOWNLOADING');
 	});
 	
+	eventSourceMonitor.on('messaged', function(data) {
+		feedOneDatasetIntoSyncIt(
+			data.queueitem.s,
+			[data.queueitem],
+			data.to,
+			function(e) {
+				if (e !== SyncItConstant.Error.OK) {
+					transitionState.change('ERROR');
+				}
+			}
+		);
+	});
+	
 	var feedOneDatasetIntoSyncIt = function(dataset, queueitems, toDatasetVersion, next) {
 		syncIt.feed(
 			queueitems,
@@ -308,7 +321,7 @@ Cls.prototype.connect = function() {
 						transitionState.change('PUSHING_DISCOVERY');
 					},
 					function() {
-						return transitionState.change('RESET');
+						return transitionState.change('ERROR');
 					}
 				);
 				
