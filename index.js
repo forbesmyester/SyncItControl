@@ -5,10 +5,11 @@
 			require('add-events'),
 			require('transition-state'),
 			require('./syncItCallbackToPromise'),
+			require('re'),
 			require('mout/array/map'),
 			require('mout/object/map'),
 			require('emitting-queue'),
-			require('when/keys'),     // TODO: Remove... I think when but it's
+			require('when/keys'),	  // TODO: Remove... I think when but it's
 			require('when/node/function'),// not __really__ required
 			require('syncit/Constant')
 		);
@@ -17,6 +18,7 @@
 			'add-events',
 			'transition-state',
 			'./syncItCallbackToPromise',
+			're',
 			'mout/array/map',
 			'mout/object/map',
 			'emitting-queue',
@@ -27,53 +29,53 @@
 	} else {
 		throw "Not Tested";
 	}
-}(this, function (addEvents, TransitionState, syncItCallbackToPromise, arrayMap, objectMap, EmittingQueue, whenKeys, whenNode, SyncItConstant) {
+}(this, function (addEvents, TransitionState, syncItCallbackToPromise, Re, arrayMap, objectMap, EmittingQueue, whenKeys, whenNode, SyncItConstant) {
 
 "use strict";
 
-/*                                       |
-                                         |
-                                         v
-                                  +-------------+
-                           +------+   Analyze   +------+
-                           |      +-------------+      |
-                           |                           |
+/*										 |
+										 |
+										 v
+								  +-------------+
+						   +------+	  Analyze	+------+
+						   |	  +-------------+	   |
+						   |						   |
    +-------------------+   |   +-------------------+   |   +-------------------+
-   |    ALL_DATASET    |   |   |  MISSING_DATASET  |   |   |   ADDING_DATASET  |
+   |	ALL_DATASET	   |   |   |  MISSING_DATASET  |   |   |   ADDING_DATASET  |
    |-------------------|   |   |-------------------|   |   |-------------------|
-   |                   |   |   |                   |   |   |                   |
-   |  +-------------+  |   |   |  +-------------+  |   |   |                   |
-   |  |   Offline   |<-----+----->|   Offline   |  |   |   |                   |
-   |  +------+------+  |       |  +------+------+  |   |   |                   |
-   |         |         |       |         |         |   |   |                   |
-   |         v         |       |         v         |   |   |                   |
-   |  +-------------+  |       |  +-------------+  |   |   |  +-------------+  |
-   |  | Connecting  |  |       |  | Connecting  |  |   +----->| Connecting  |  |
-   |  +------+------+  |       |  +------+------+  |       |  +------+------+  |
-   |         |         |       |         |         |       |         |         |
-   |         v         |       |         v         |       |         v         |
-   |  +-------------+  |       |  +-------------+  |       |  +-------------+  |
-   |  | Downloading |  |       |  | Downloading |  |       |  | Downloading |  |
-   |  +------+------+  |       |  +------+------+  |       |  +------+------+  |
-   |         |         |       |         |         |       |         |         |
-   +---------|---------+       +---------|---------+       +---------|---------+
-             |                           |                           |
-             +---------------------------+---------------------------+
-                                         |
-                                         v
-                               +-------------------+
-                               | Pushing Discovery |<--+
-                               +---------+---------+   |
-                                         |             |
-                                         v             |
-                               +-------------------+   |
-                               |     Pushing       +---+
-                               +---------+---------+
-                                         |
-                                         v
-                               +-------------------+
-                               |     Synched       |
-                               +-------------------+
+   |				   |   |   |				   |   |   |				   |
+   |  +-------------+  |   |   |  +-------------+  |   |   |				   |
+   |  |	  Offline	|<-----+----->|	  Offline	|  |   |   |				   |
+   |  +------+------+  |	   |  +------+------+  |   |   |				   |
+   |		 |		   |	   |		 |		   |   |   |				   |
+   |		 v		   |	   |		 v		   |   |   |				   |
+   |  +-------------+  |	   |  +-------------+  |   |   |  +-------------+  |
+   |  | Connecting	|  |	   |  | Connecting	|  |   +----->| Connecting	|  |
+   |  +------+------+  |	   |  +------+------+  |	   |  +------+------+  |
+   |		 |		   |	   |		 |		   |	   |		 |		   |
+   |		 v		   |	   |		 v		   |	   |		 v		   |
+   |  +-------------+  |	   |  +-------------+  |	   |  +-------------+  |
+   |  | Downloading |  |	   |  | Downloading |  |	   |  | Downloading |  |
+   |  +------+------+  |	   |  +------+------+  |	   |  +------+------+  |
+   |		 |		   |	   |		 |		   |	   |		 |		   |
+   +---------|---------+	   +---------|---------+	   +---------|---------+
+			 |							 |							 |
+			 +---------------------------+---------------------------+
+										 |
+										 v
+							   +-------------------+
+							   | Pushing Discovery |<--+
+							   +---------+---------+   |
+										 |			   |
+										 v			   |
+							   +-------------------+   |
+							   |	 Pushing	   +---+
+							   +---------+---------+
+										 |
+										 v
+							   +-------------------+
+							   |	 Synched	   |
+							   +-------------------+
 
 Current State Diagram... Any state shown can go to unshown Error state, which
 can only lead to the Analyze state.
@@ -82,10 +84,10 @@ Analyze will end up going to either one of three states:
 
  1. All Dataset - If all datasets are known.
  2. Missing Dataset - If we know that we are completely lacking any of the
-    datasets which was passed into the constructor.
+	datasets which was passed into the constructor.
  3. Adding Dataset - If all previous datasets were known but we have added one
-    which is unknown.
-    
+	which is unknown.
+	
 Of these statuses Downloading in All Dataset as well as Connecting and 
 Downloading of Adding Dataset are all classed as online and will fire the 
 online event. Connecting and Downloading will fire the adding-new-dataset and
@@ -102,23 +104,24 @@ var Cls = function(syncIt, eventSourceMonitor, stateConfig, downloadDatasetFunc,
 	this._datasets = initialDatasets;
 	this._conflictResolutionFunction = conflictResolutionFunction;
 	this._stateConfig = stateConfig;
+	this._nextState = false;
 	this._transitionState = (function() {
 			var t = new TransitionState('RESET'),
 				states = {
 					'RESET': ['ANALYZE'],
-					'ANALYZE': ['MISSING_DATASET__OFFLINE', 'ALL_DATASET__OFFLINE', 'ADDING_DATASET__CONNECTING', 'RESET'],
-					'MISSING_DATASET__OFFLINE': ['MISSING_DATASET__CONNECTING', 'RESET'],
-					'MISSING_DATASET__CONNECTING': ['MISSING_DATASET__DOWNLOADING', 'RESET'],
-					'MISSING_DATASET__DOWNLOADING': ['PUSHING_DISCOVERY', 'RESET'],
-					'ALL_DATASET__OFFLINE': ['ALL_DATASET__CONNECTING', 'RESET'],
-					'ALL_DATASET__CONNECTING': ['ALL_DATASET__DOWNLOADING', 'RESET'],
-					'ALL_DATASET__DOWNLOADING': ['PUSHING_DISCOVERY', 'RESET'],
-					'ADDING_DATASET__CONNECTING': ['ADDING_DATASET__DOWNLOADING', 'RESET'],
-					'ADDING_DATASET__DOWNLOADING': ['PUSHING_DISCOVERY', 'RESET'],
-					'PUSHING_DISCOVERY': ['SYNCHED', 'PUSHING', 'RESET'],
-					'PUSHING': ['PUSHING_DISCOVERY', 'RESET'],
-					'SYNCHED': ['RESET'],
-					'ERROR': []
+					'ANALYZE': ['MISSING_DATASET__OFFLINE', 'ALL_DATASET__OFFLINE', 'RESET', 'ERROR'],
+					'MISSING_DATASET__OFFLINE': ['MISSING_DATASET__CONNECTING', 'RESET', 'ERROR'],
+					'MISSING_DATASET__CONNECTING': ['MISSING_DATASET__DOWNLOADING', 'RESET', 'ERROR'],
+					'MISSING_DATASET__DOWNLOADING': ['PUSHING_DISCOVERY', 'RESET', 'ERROR'],
+					'ALL_DATASET__OFFLINE': ['ALL_DATASET__CONNECTING', 'RESET', 'ERROR'],
+					'ALL_DATASET__CONNECTING': ['ALL_DATASET__DOWNLOADING', 'RESET', 'ERROR'],
+					'ALL_DATASET__DOWNLOADING': ['PUSHING_DISCOVERY', 'RESET', 'ADDING_DATASET__CONNECTING', 'ERROR'],
+					'ADDING_DATASET__CONNECTING': ['ADDING_DATASET__DOWNLOADING', 'RESET', 'ERROR'],
+					'ADDING_DATASET__DOWNLOADING': ['PUSHING_DISCOVERY', 'RESET', 'ADDING_DATASET__DOWNLOADING', 'ERROR'],
+					'PUSHING_DISCOVERY': ['SYNCHED', 'PUSHING', 'RESET', 'ADDING_DATASET__CONNECTING', 'ERROR'],
+					'PUSHING': ['PUSHING_DISCOVERY', 'RESET', 'ADDING_DATASET__CONNECTING', 'SYNCHED', 'ERROR'],
+					'SYNCHED': ['RESET', 'ADDING_DATASET__CONNECTING', 'ERROR'],
+					'ERROR': ['RESET']
 				};
 			for (var k in states) {
 				if (states.hasOwnProperty(k)) {
@@ -129,37 +132,62 @@ var Cls = function(syncIt, eventSourceMonitor, stateConfig, downloadDatasetFunc,
 		})();
 };
 
-// Cls.prototype.addMonitoredDataset = function(datasetName) {
-// 	
-// };
-// 
+Cls.prototype.addMonitoredDataset = function(datasetName) {
+	var transitions = {
+			'RESET': {now: true, toState: 'RESET'},
+			'ANALYZE': {now: true, toState: 'RESET'},
+			'MISSING_DATASET__OFFLINE': {now: true, toState: 'RESET'},
+			'MISSING_DATASET__CONNECTING': {now: true, toState: 'RESET'},
+			'ALL_DATASET__OFFLINE': {now: true, toState: 'RESET'},
+			'ALL_DATASET__CONNECTING': {now: true, toState: 'RESET'},
+			'ADDING_DATASET__CONNECTING': {now: true, toState: 'RESET'},
+			'MISSING_DATASET__DOWNLOADING': {now: false, toState: 'RESET'},
+			'ADDING_DATASET__DOWNLOADING': {now: false, toState: 'ADDING_DATASET__CONNECTING'},
+			'PUSHING_DISCOVERY': {now: false, toState: 'ADDING_DATASET__CONNECTING'},
+			'SYNCHED': {now: true, toState: 'ADDING_DATASET__CONNECTING'},
+			'ALL_DATASET__DOWNLOADING': {now: false, toState: 'ADDING_DATASET__CONNECTING'},
+			'PUSHING': {now: false, toState: 'ADDING_DATASET__CONNECTING'},
+			'ERROR': {now: false, toState: 'RESET'}
+		};
+	
+	if (this._datasets.indexOf(datasetName) !== -1) { return; }
+	this._datasets.push(datasetName);
+	if (!transitions.hasOwnProperty(this._transitionState.current())) {
+		throw "Must be in an unknown state!";
+	}
+	if (transitions[this._transitionState.current()].now) {
+		return this._transitionState.change(transitions[this._transitionState.current()].toState);
+	}
+	this._nextState = transitions[this._transitionState.current()].toState;
+};
+
 // Cls.prototype.removeMonitoredDataset = function(datasetName) {
-// 	
+//	
 // };
 
 Cls.prototype.connect = function() {
 	var stateConfig = this._stateConfig,
 		datasets = this._datasets,
 		transitionState = this._transitionState,
-		lastReset = 0,
 		eventSourceMonitor = this._eventSourceMonitor,
-		eventSourceMonitorStarted = false,
 		emit = this._emit.bind(this),
 		downloadDatasetFunc = this._downloadDatasetFunc,
 		uploadChangeFunc = this._uploadChangeFunc,
 		syncIt = this._syncIt,
-		uploadQueue
+		uploadQueue,
+		reRetryDone = false
 	;
 	
-	var allDatasetKnown = function() {
+	var getUnknownDataset = function() {
 		var i, l,
-			knownDatasets = stateConfig.findKeys('*');
+			knownDatasets = stateConfig.findKeys('*'),
+			r = [];
 		for (i=0, l=datasets.length; i<l ; i++) {
 			if (knownDatasets.indexOf(datasets[i]) == -1) {
-				return false;
+				r.push(datasets[i]);
 			}
 		}
-		return true;
+		return r;
 	};
 	
 	var getBaseEventObj = function() {
@@ -167,31 +195,8 @@ Cls.prototype.connect = function() {
 	};
 	
 	var reset = function() {
-		/* global setTimeout */
 		eventSourceMonitor.disconnect();
-		var now = new Date().getTime(),
-			gotoAnalyze = function() {
-				lastReset = new Date().getTime();
-				transitionState.change('ANALYZE');
-			};
-		if (lastReset + 5000 > now) {
-			return setTimeout(gotoAnalyze, 5000);
-		}
-		gotoAnalyze();
-	};
-	
-	var performAnalysis = function() {
-		if (allDatasetKnown()) {
-			return transitionState.change('ALL_DATASET__OFFLINE');
-		}
-		return transitionState.change('MISSING_DATASET__OFFLINE');
-	};
-	
-	var attemptConnect = function() {
-		if (!eventSourceMonitorStarted) {
-			eventSourceMonitor.connect(datasets);
-			eventSourceMonitorStarted = true;
-		}
+		transitionState.change('ANALYZE');
 	};
 	
 	var doDownloads = function(datasets, next) {
@@ -242,6 +247,10 @@ Cls.prototype.connect = function() {
 		transitionWithinStatePath('CONNECTING', 'DOWNLOADING');
 	});
 	
+	eventSourceMonitor.on('url-changed', function() {
+		transitionWithinStatePath('CONNECTING', 'DOWNLOADING');
+	});
+	
 	eventSourceMonitor.on('messaged', function(data) {
 		feedOneDatasetIntoSyncIt(
 			data.queueitem.s,
@@ -271,20 +280,99 @@ Cls.prototype.connect = function() {
 		);
 	};
 	
+	var uploadError = function(e, queueitem) {
+		uploadQueue.empty();
+		uploadQueue.resume();
+		emit('error-uploading-queueitem', e, queueitem);
+		transitionState.change('ERROR');
+	};
+	
+	var queueitemUploaded = function(queueitem, to) {
+		stateConfig.setItem(queueitem.s, to);
+		emit('uploaded-queueitem', queueitem, to);
+		syncIt.advance(queueitemAdvanced);
+	};
+	
+	var pushChangesInSyncIt = function() {
+		
+		var pushUploadQueue;
+		
+		var getQueueitemFromSyncIt = function(next) {
+			syncIt.getFirst(function(err, pathItem) {
+				var ok = [SyncItConstant.Error.NO_DATA_FOUND, SyncItConstant.Error.OK];
+				if (ok.indexOf(err) === -1) {
+					return next(err);
+				}
+				return next(
+					null,
+					(err === SyncItConstant.Error.NO_DATA_FOUND) ?
+						null :
+						pathItem
+				);
+			});
+		};
+		
+		var getAndQueue = function() {
+			getQueueitemFromSyncIt(function(e, data) {
+				if (e) { transitionState.change('ERROR'); }
+				if (data === null) {
+					return transitionState.change('SYNCHED');
+				}
+				pushUploadQueue.push(data);
+			});
+		};
+		
+		pushUploadQueue = new EmittingQueue(uploadChangeFunc);
+		pushUploadQueue.on('item-processed', function(queueitem, to) {
+			queueitemUploaded(queueitem, to);
+			getAndQueue();
+		});
+		pushUploadQueue.on('item-could-not-be-processed', uploadError);
+		getAndQueue();
+	};
+	
 	var processStateChange = function(oldState, currentState) {
 		
-		// (function() {
-		// 	/* global console */
-		// 	console.log([oldState, currentState]);
-		// }());
+		var nextState;
+		
+		if (this._nextState) {
+			if (currentState !== 'ERROR') {
+				nextState = this._nextState;
+				this._nextState = false;
+				return transitionState.change(nextState);
+			} else { return; }
+		}
+		
+		emit('entered-state', currentState.toLowerCase());
 		
 		switch (currentState) {
+		case 'ERROR':
+			if (reRetryDone !== false) {
+				return reRetryDone(new Error("Will Retry"));
+			}
+			var theRe = new Re({
+				initial: 1000
+			});
+			theRe.try(
+				function(retryCount, done) {
+					reRetryDone = done;
+					transitionState.change('RESET');
+				},
+				function(err) {
+					if (err) {
+						emit('error-cycle-caused-stoppage');
+					}
+				}
+			);
+			break;
 		case 'RESET':
 			reset();
 			break;
 		case 'ANALYZE':
-			performAnalysis();
-			break;
+			if (getUnknownDataset().length === 0) {
+				return transitionState.change('ALL_DATASET__OFFLINE');
+			}
+			return transitionState.change('MISSING_DATASET__OFFLINE');
 		case 'ALL_DATASET__OFFLINE':
 			emit('available', getBaseEventObj());
 			/* falls through */
@@ -293,12 +381,15 @@ Cls.prototype.connect = function() {
 			break;
 		case 'ALL_DATASET__CONNECTING': /* falls through */
 		case 'MISSING_DATASET__CONNECTING': /* falls through */
+			datasets.sort();
+			eventSourceMonitor.connect(datasets.join('.'));
+			break;
 		case 'ADDING_DATASET__CONNECTING':
-			attemptConnect();
+			eventSourceMonitor.changeUrl(datasets.join('.'));
 			break;
 		case 'ALL_DATASET__DOWNLOADING':  /* falls through */
 		case 'MISSING_DATASET__DOWNLOADING':  /* falls through */
-		case 'ADDING_DATASET__DOWNLOADING':  /* falls through */
+		case 'ADDING_DATASET__DOWNLOADING':	 /* falls through */
 			emit('online', getBaseEventObj());
 			doDownloads(datasets, function(err, datasetsData) {
 				
@@ -343,12 +434,16 @@ Cls.prototype.connect = function() {
 			break;
 		case 'PUSHING':
 			emit('pushing', getBaseEventObj());
+			pushChangesInSyncIt();
 			break;
 		case 'SYNCHED':
+			if (reRetryDone !== false) {
+				reRetryDone(null);
+			}
 			emit('synched', getBaseEventObj());
 			break;
 		}
-	};
+	}.bind(this);
 	
 	transitionState.on('changed-state', processStateChange);
 	transitionState.on('initial-state', function(state) {
@@ -368,20 +463,8 @@ Cls.prototype.connect = function() {
 		emit('advanced-queueitem', queueitem);
 	};
 	
-	var uploadError = function(e, queueitem) {
-		uploadQueue.empty();
-		uploadQueue.resume();
-		emit('error-uploading-queueitem', e, queueitem);
-		transitionState.change('ERROR');
-	};
-	
 	uploadQueue = new EmittingQueue(uploadChangeFunc);
-	uploadQueue.on('item-processed', function(queueitem, to) {
-		stateConfig.setItem(queueitem.s, to);
-		emit('uploaded-queueitem', queueitem, to);
-		syncIt.advance(queueitemAdvanced);
-	});
-	
+	uploadQueue.on('item-processed', queueitemUploaded);
 	uploadQueue.on('item-could-not-be-processed', uploadError);
 	syncIt.listenForAddedToPath(function(dataset, datakey, queueitem) {
 		uploadQueue.push(queueitem);
@@ -392,10 +475,21 @@ Cls.prototype.connect = function() {
 };
 
 addEvents(Cls, [
-	'offline', 'online', 'pushing', 'synched', 'adding-new-dataset',
-	'added-new-dataset', 'removed-dataset', 'available', 'unavailable',
-	'uploaded-queueitem', 'advanced-queueitem',
-	'error-uploading-queueitem', 'error-advancing-queueitem'
+	'offline',
+	'online',
+	'pushing',
+	'synched',
+	'adding-new-dataset',
+	'added-new-dataset',
+	'removed-dataset',
+	'available',
+	'unavailable',
+	'uploaded-queueitem',
+	'advanced-queueitem',
+	'error-uploading-queueitem',
+	'error-advancing-queueitem',
+	'entered-state',
+	'error-cycle-caused-stoppage'
 ]);
 
 

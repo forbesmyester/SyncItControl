@@ -18,7 +18,8 @@
 			baseUrl: '.',
 			paths: {
 				syncit: "node_modules/syncit",
-				mout: "node_modules/mout/src"
+				mout: "node_modules/mout/src",
+				re: 'node_modules/re/lib/re'
 			},
 			packages: [
 				{
@@ -53,7 +54,7 @@
 				}
 			],
 			shim: {
-				// pagejs: { deps: [], exports: 'page' },
+				re: { deps: [], exports: 'Re' },
 			}
 		});
     	
