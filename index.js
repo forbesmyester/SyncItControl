@@ -353,7 +353,7 @@ Cls.prototype.connect = function() {
 			var theRe = new Re({
 				initial: 1000
 			});
-			theRe.try(
+			theRe.do(
 				function(retryCount, done) {
 					reRetryDone = done;
 					transitionState.change('RESET');
