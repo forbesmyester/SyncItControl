@@ -144,6 +144,7 @@ describe('SyncItControl',function() {
 			initialDatasets = ['cars'],
 			attemptToMessage = function() {
 					eventSources[0].pretendMessage({
+						command: 'queueitem',
 						to: 'cars@3',
 						queueitem: {
 							"s":"cars",
@@ -176,8 +177,7 @@ describe('SyncItControl',function() {
 			stateConfig,
 			downloadDatasetFunc,
 			uploadChangeFunc,
-			conflictResolutionFunction,
-			initialDatasets
+			conflictResolutionFunction
 		);
 		
 		syncItControl.on('advanced-queueitem', function(queueitem) {
@@ -220,7 +220,7 @@ describe('SyncItControl',function() {
 			});
 		});
 		
-		syncItControl.connect();
+		syncItControl.connect(initialDatasets);
 		
 	});
 	
@@ -283,8 +283,7 @@ describe('SyncItControl',function() {
 			stateConfig,
 			downloadDatasetFunc,
 			uploadChangeFunc,
-			conflictResolutionFunction,
-			initialDatasets
+			conflictResolutionFunction
 		);
 		
 		syncItControl.once('synched', function() {
@@ -298,7 +297,7 @@ describe('SyncItControl',function() {
 			});
 		});
 		
-		syncItControl.connect();
+		syncItControl.connect(initialDatasets);
 	});
 	
 	it('adding datasets use case (when pushing-discovery)', function(done) {
@@ -360,8 +359,7 @@ describe('SyncItControl',function() {
 			stateConfig,
 			downloadDatasetFunc,
 			uploadChangeFunc,
-			conflictResolutionFunction,
-			initialDatasets
+			conflictResolutionFunction
 		);
 		
 		syncItControl.on('entered-state', function(state) {
@@ -377,7 +375,7 @@ describe('SyncItControl',function() {
 			});
 		});
 		
-		syncItControl.connect();
+		syncItControl.connect(initialDatasets);
 	});
 	
 	it('it can recover from errors', function(done) {
@@ -419,8 +417,7 @@ describe('SyncItControl',function() {
 			stateConfig,
 			downloadDatasetFunc,
 			uploadChangeFunc,
-			conflictResolutionFunction,
-			initialDatasets
+			conflictResolutionFunction
 		);
 		
 		eventSourceMonitor.on('added-managed-connection', function() {
@@ -443,7 +440,7 @@ describe('SyncItControl',function() {
 		// 	console.log("CURRENT_STATE: ", state);
 		// });
 		
-		syncItControl.connect();
+		syncItControl.connect(initialDatasets);
 	});
 	
 	it('will pass through EventSource messages into SyncIt', function() {

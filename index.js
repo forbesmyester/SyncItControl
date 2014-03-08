@@ -4,7 +4,7 @@
 		module.exports = factory(
 			require('add-events'),
 			require('transition-state'),
-			require('./syncItCallbackToPromise'),
+			require('syncit/syncItCallbackToPromise'),
 			require('re'),
 			require('mout/array/map'),
 			require('mout/object/map'),
@@ -17,7 +17,7 @@
 		define([
 			'add-events',
 			'transition-state',
-			'./syncItCallbackToPromise',
+			'syncit/syncItCallbackToPromise',
 			're',
 			'mout/array/map',
 			'mout/object/map',
@@ -96,12 +96,12 @@ synced events when it enters Pushing Discovery and Synched Statuses.
 
 */
 
-var Cls = function(syncIt, eventSourceMonitor, stateConfig, downloadDatasetFunc, uploadChangeFunc, conflictResolutionFunction, initialDatasets) {
+var Cls = function(syncIt, eventSourceMonitor, stateConfig, downloadDatasetFunc, uploadChangeFunc, conflictResolutionFunction) {
 	this._syncIt = syncIt;
 	this._eventSourceMonitor = eventSourceMonitor;
 	this._downloadDatasetFunc = downloadDatasetFunc;
 	this._uploadChangeFunc = uploadChangeFunc;
-	this._datasets = initialDatasets;
+	this._datasets = false;
 	this._conflictResolutionFunction = conflictResolutionFunction;
 	this._stateConfig = stateConfig;
 	this._nextState = false;
@@ -165,7 +165,14 @@ Cls.prototype.addMonitoredDataset = function(datasetName) {
 //	
 // };
 
-Cls.prototype.connect = function() {
+Cls.prototype.connect = function(initialDatasets) {
+	
+	if (this._datasets !== false) {
+		throw "You seem to have tried to connect twice...";
+	}
+	
+	this._datasets = JSON.parse(JSON.stringify(initialDatasets));
+	
 	var stateConfig = this._stateConfig,
 		datasets = this._datasets,
 		transitionState = this._transitionState,
@@ -252,6 +259,9 @@ Cls.prototype.connect = function() {
 	});
 	
 	eventSourceMonitor.on('messaged', function(data) {
+		if (!data.hasOwnProperty('command') || data.command != 'queueitem') {
+			return;
+		}
 		feedOneDatasetIntoSyncIt(
 			data.queueitem.s,
 			[data.queueitem],
