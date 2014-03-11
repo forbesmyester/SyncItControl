@@ -162,17 +162,33 @@ Cls.prototype.addMonitoredDataset = function(datasetName) {
 	this._nextState = transitions[this._transitionState.current()].toState;
 };
 
-// Cls.prototype.removeMonitoredDataset = function(datasetName) {
-//	
-// };
-
-Cls.prototype.connect = function(initialDatasets) {
+Cls.prototype.connect = function(datasetsToAdd) {
 	
-	if (this._datasets !== false) {
-		throw "You seem to have tried to connect twice...";
+	var i, l;
+	
+	if (this._datasets === false) {
+		if (!datasetsToAdd.length) {
+			throw "You must connect to initial datasets";
+		}
+		this._datasets = JSON.parse(JSON.stringify(datasetsToAdd));
+		return this._process();
 	}
 	
-	this._datasets = JSON.parse(JSON.stringify(initialDatasets));
+	if (arguments.length) {
+		for (i=0, l=datasetsToAdd.length; i<l; i++) {
+			if (this._datasets.indexOf(datasetsToAdd[i])) {
+				this.addMonitoredDataset(datasetsToAdd[i]);
+			}
+		}
+	}
+	
+	if (this._transitionState.current() === 'DISCONNECTED') {
+		this._transitionState.change('RESET');
+	}
+	
+};
+
+Cls.prototype._process = function() {
 	
 	var stateConfig = this._stateConfig,
 		datasets = this._datasets,
@@ -181,6 +197,7 @@ Cls.prototype.connect = function(initialDatasets) {
 		emit = this._emit.bind(this),
 		downloadDatasetFunc = this._downloadDatasetFunc,
 		uploadChangeFunc = this._uploadChangeFunc,
+		conflictResolutionFunction = this._conflictResolutionFunction,
 		syncIt = this._syncIt,
 		uploadQueue,
 		reRetryDone = false,
@@ -281,9 +298,7 @@ Cls.prototype.connect = function(initialDatasets) {
 	var feedOneDatasetIntoSyncIt = function(dataset, queueitems, toDatasetVersion, next) {
 		syncIt.feed(
 			queueitems,
-			function() {
-				throw new Error("CONFLICT: FAIL FAIL FAIL");
-			},
+			conflictResolutionFunction,
 			function(err) {
 				if (err != SyncItConstant.Error.OK) {
 					return next(err);
@@ -393,14 +408,13 @@ Cls.prototype.connect = function(initialDatasets) {
 		case 'MISSING_DATASET__OFFLINE':
 			transitionWithinStatePath('OFFLINE', 'CONNECTING');
 			break;
-		case 'ALL_DATASET__CONNECTING':
+		case 'ALL_DATASET__CONNECTING': /* falls through */
+		case 'MISSING_DATASET__CONNECTING':
+			datasets.sort();
 			if (connectedUrl === datasets.join('.')) {
 				transitionWithinStatePath('CONNECTING', 'DOWNLOADING');
 				return;
 			}
-			/* falls through */
-		case 'MISSING_DATASET__CONNECTING':
-			datasets.sort();
 			eventSourceMonitor.changeUrl(datasets.join('.'));
 			eventSourceMonitor.connect();
 			break;
@@ -413,26 +427,49 @@ Cls.prototype.connect = function(initialDatasets) {
 			emit('online', getBaseEventObj());
 			doDownloads(datasets, function(err, datasetsData) {
 				
-				var promises = objectMap(
+				var erroredDatasets = [],
+					feedWorker = function(ob, done) {
+							if (ob.queueitems.length === 0) {
+								return done(null); 
+							}
+							feedOneDatasetIntoSyncIt(
+								ob.dataset,
+								ob.queueitems,
+								ob.toVersion,
+								function(err) {
+									if (err === 24) {
+										erroredDatasets.push(ob.dataset);
+									}
+									done(null);
+								}
+							);
+						},
+					feedQueue = new EmittingQueue(feedWorker);
+				
+				feedQueue.on('new-queue-length', function(l) {
+					if (l === 0) {
+						arrayMap(erroredDatasets, function(eds) {
+							stateConfig.setItem(eds, null);
+							emit(
+								'feed-version-error-caused-history-destroy',
+								eds
+							);
+						});
+						if (erroredDatasets.length) {
+							return transitionState.change('ERROR');
+						}
+						return transitionState.change('PUSHING_DISCOVERY');
+					}
+				});
+				
+				objectMap(
 					datasetsData,
 					function(oneData, dataset) {
-						return syncItCallbackToPromise(
-							syncIt,
-							feedOneDatasetIntoSyncIt,
-							[0],
-							dataset,
-							oneData.data,
-							oneData.toVersion
-						);
-					}
-				);
-				
-				whenKeys.all(promises).done(
-					function() {
-						transitionState.change('PUSHING_DISCOVERY');
-					},
-					function() {
-						return transitionState.change('ERROR');
+						feedQueue.push({
+							dataset: dataset,
+							queueitems: oneData.data,
+							toVersion: oneData.toVersion
+						});
 					}
 				);
 				
@@ -509,7 +546,8 @@ addEvents(Cls, [
 	'error-uploading-queueitem',
 	'error-advancing-queueitem',
 	'entered-state',
-	'error-cycle-caused-stoppage'
+	'error-cycle-caused-stoppage',
+	'feed-version-error-caused-history-destroy'
 ]);
 
 

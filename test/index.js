@@ -444,9 +444,9 @@ describe('SyncItControl',function() {
 			});
 		});
 		
-		syncItControl.on('entered-state', function(state) {
-			console.log("CURRENT_STATE: ", state);
-		});
+		// syncItControl.on('entered-state', function(state) {
+		// 	console.log("CURRENT_STATE: ", state);
+		// });
 		
 		syncItControl.connect(initialDatasets);
 	});
