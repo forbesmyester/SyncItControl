@@ -108,20 +108,21 @@ var Cls = function(syncIt, eventSourceMonitor, stateConfig, downloadDatasetFunc,
 	this._transitionState = (function() {
 			var t = new TransitionState('RESET'),
 				states = {
-					'RESET': ['ANALYZE'],
-					'ANALYZE': ['MISSING_DATASET__OFFLINE', 'ALL_DATASET__OFFLINE', 'RESET', 'ERROR'],
-					'MISSING_DATASET__OFFLINE': ['MISSING_DATASET__CONNECTING', 'RESET', 'ERROR'],
-					'MISSING_DATASET__CONNECTING': ['MISSING_DATASET__DOWNLOADING', 'RESET', 'ERROR'],
-					'MISSING_DATASET__DOWNLOADING': ['PUSHING_DISCOVERY', 'RESET', 'ERROR'],
-					'ALL_DATASET__OFFLINE': ['ALL_DATASET__CONNECTING', 'RESET', 'ERROR'],
-					'ALL_DATASET__CONNECTING': ['ALL_DATASET__DOWNLOADING', 'RESET', 'ERROR'],
-					'ALL_DATASET__DOWNLOADING': ['PUSHING_DISCOVERY', 'RESET', 'ADDING_DATASET__CONNECTING', 'ERROR'],
-					'ADDING_DATASET__CONNECTING': ['ADDING_DATASET__DOWNLOADING', 'RESET', 'ERROR'],
-					'ADDING_DATASET__DOWNLOADING': ['PUSHING_DISCOVERY', 'RESET', 'ADDING_DATASET__DOWNLOADING', 'ERROR'],
-					'PUSHING_DISCOVERY': ['SYNCHED', 'PUSHING', 'RESET', 'ADDING_DATASET__CONNECTING', 'ERROR'],
-					'PUSHING': ['PUSHING_DISCOVERY', 'RESET', 'ADDING_DATASET__CONNECTING', 'SYNCHED', 'ERROR'],
-					'SYNCHED': ['RESET', 'ADDING_DATASET__CONNECTING', 'ERROR'],
-					'ERROR': ['RESET']
+					'DISCONNECTED': ['RESET'],
+					'RESET': ['DISCONNECTED', 'ANALYZE'],
+					'ANALYZE': ['DISCONNECTED', 'MISSING_DATASET__OFFLINE', 'ALL_DATASET__OFFLINE', 'RESET', 'ERROR'],
+					'MISSING_DATASET__OFFLINE': ['DISCONNECTED', 'MISSING_DATASET__CONNECTING', 'RESET', 'ERROR'],
+					'MISSING_DATASET__CONNECTING': ['DISCONNECTED', 'MISSING_DATASET__DOWNLOADING', 'RESET', 'ERROR'],
+					'MISSING_DATASET__DOWNLOADING': ['DISCONNECTED', 'PUSHING_DISCOVERY', 'RESET', 'ERROR'],
+					'ALL_DATASET__OFFLINE': ['DISCONNECTED', 'ALL_DATASET__CONNECTING', 'RESET', 'ERROR'],
+					'ALL_DATASET__CONNECTING': ['DISCONNECTED', 'ALL_DATASET__DOWNLOADING', 'RESET', 'ERROR'],
+					'ALL_DATASET__DOWNLOADING': ['DISCONNECTED', 'PUSHING_DISCOVERY', 'RESET', 'ADDING_DATASET__CONNECTING', 'ERROR'],
+					'ADDING_DATASET__CONNECTING': ['DISCONNECTED', 'ADDING_DATASET__DOWNLOADING', 'RESET', 'ERROR'],
+					'ADDING_DATASET__DOWNLOADING': ['DISCONNECTED', 'PUSHING_DISCOVERY', 'RESET', 'ADDING_DATASET__DOWNLOADING', 'ERROR'],
+					'PUSHING_DISCOVERY': ['DISCONNECTED', 'SYNCHED', 'PUSHING', 'RESET', 'ADDING_DATASET__CONNECTING', 'ERROR'],
+					'PUSHING': ['DISCONNECTED', 'PUSHING_DISCOVERY', 'RESET', 'ADDING_DATASET__CONNECTING', 'SYNCHED', 'ERROR'],
+					'SYNCHED': ['DISCONNECTED', 'RESET', 'ADDING_DATASET__CONNECTING', 'ERROR'],
+					'ERROR': ['DISCONNECTED', 'RESET']
 				};
 			for (var k in states) {
 				if (states.hasOwnProperty(k)) {
@@ -182,7 +183,8 @@ Cls.prototype.connect = function(initialDatasets) {
 		uploadChangeFunc = this._uploadChangeFunc,
 		syncIt = this._syncIt,
 		uploadQueue,
-		reRetryDone = false
+		reRetryDone = false,
+		connectedUrl = false
 	;
 	
 	var getUnknownDataset = function() {
@@ -199,11 +201,6 @@ Cls.prototype.connect = function(initialDatasets) {
 	
 	var getBaseEventObj = function() {
 		return { datasets: datasets };
-	};
-	
-	var reset = function() {
-		eventSourceMonitor.disconnect();
-		transitionState.change('ANALYZE');
 	};
 	
 	var doDownloads = function(datasets, next) {
@@ -251,11 +248,18 @@ Cls.prototype.connect = function(initialDatasets) {
 	};
 	
 	eventSourceMonitor.on('connected', function() {
+		connectedUrl = this._url;
 		transitionWithinStatePath('CONNECTING', 'DOWNLOADING');
 	});
 	
 	eventSourceMonitor.on('url-changed', function() {
+		connectedUrl = this._url;
 		transitionWithinStatePath('CONNECTING', 'DOWNLOADING');
+	});
+	
+	eventSourceMonitor.on('disconnected', function() {
+		connectedUrl = false;
+		transitionState.change('DISCONNECTED');
 	});
 	
 	eventSourceMonitor.on('messaged', function(data) {
@@ -376,7 +380,7 @@ Cls.prototype.connect = function(initialDatasets) {
 			);
 			break;
 		case 'RESET':
-			reset();
+			transitionState.change('ANALYZE');
 			break;
 		case 'ANALYZE':
 			if (getUnknownDataset().length === 0) {
@@ -389,10 +393,16 @@ Cls.prototype.connect = function(initialDatasets) {
 		case 'MISSING_DATASET__OFFLINE':
 			transitionWithinStatePath('OFFLINE', 'CONNECTING');
 			break;
-		case 'ALL_DATASET__CONNECTING': /* falls through */
-		case 'MISSING_DATASET__CONNECTING': /* falls through */
+		case 'ALL_DATASET__CONNECTING':
+			if (connectedUrl === datasets.join('.')) {
+				transitionWithinStatePath('CONNECTING', 'DOWNLOADING');
+				return;
+			}
+			/* falls through */
+		case 'MISSING_DATASET__CONNECTING':
 			datasets.sort();
-			eventSourceMonitor.connect(datasets.join('.'));
+			eventSourceMonitor.changeUrl(datasets.join('.'));
+			eventSourceMonitor.connect();
 			break;
 		case 'ADDING_DATASET__CONNECTING':
 			eventSourceMonitor.changeUrl(datasets.join('.'));

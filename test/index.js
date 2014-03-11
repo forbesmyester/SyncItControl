@@ -44,24 +44,32 @@
 
 "use strict";
 
-var FakeEventSource = function(url) {
-	this._url = url;
-};
-
-FakeEventSource.prototype.open = function() {
-	this.onopen({currentTarget: this});
-};
-
-FakeEventSource.prototype.pretendDisconnected = function() {
-	this.onerror({currentTarget: this});
-};
-
-FakeEventSource.prototype.pretendMessage = function(msg) {
-	this.onmessage({
-		currentTarget: this,
-		data: JSON.stringify(msg)
-	});
-};
+	var FakeEventSource = function(url) {
+		this._url = url;
+		this.readyState = 0;
+	};
+	
+	FakeEventSource.prototype.open = function() {
+		this.readyState = 1;
+		this.onopen({currentTarget: this});
+	};
+	
+	FakeEventSource.prototype.close = function() {
+		this.readyState = 2;
+	};
+	
+	FakeEventSource.prototype.pretendDisconnected = function() {
+		this.readyState = 2;
+		this.onerror({currentTarget: this});
+	};
+	
+	FakeEventSource.prototype.pretendMessage = function(msg) {
+		this.readyState = 1;
+		this.onmessage({
+			currentTarget: this,
+			data: JSON.stringify(msg)
+		});
+	};
 
 var getStateConfig = function(localStorage, userId) {
 	// data format = { dataset-[dataset]: [version] }
@@ -436,9 +444,9 @@ describe('SyncItControl',function() {
 			});
 		});
 		
-		// syncItControl.on('entered-state', function(state) {
-		// 	console.log("CURRENT_STATE: ", state);
-		// });
+		syncItControl.on('entered-state', function(state) {
+			console.log("CURRENT_STATE: ", state);
+		});
 		
 		syncItControl.connect(initialDatasets);
 	});
