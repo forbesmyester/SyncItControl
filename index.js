@@ -4,27 +4,27 @@
 		module.exports = factory(
 			require('add-events'),
 			require('transition-state'),
-			require('syncit/syncItCallbackToPromise'),
+			require('sync-it/syncItCallbackToPromise'),
 			require('re'),
 			require('mout/array/map'),
 			require('mout/object/map'),
-			require('emitting-queue'),
-			require('when/keys'),	  // TODO: Remove... I think when but it's
-			require('when/node/function'),// not __really__ required
-			require('syncit/Constant')
+			require('./emitting-queue'),
+			require('when/keys'),
+			require('when/node/function'),
+			require('sync-it/Constant')
 		);
 	} else if (typeof define === 'function' && define.amd) {
 		define([
 			'add-events',
 			'transition-state',
-			'syncit/syncItCallbackToPromise',
+			'sync-it/syncItCallbackToPromise',
 			're',
 			'mout/array/map',
 			'mout/object/map',
-			'emitting-queue',
+			'./emitting-queue',
 			'when/keys',
 			'when/node/function',
-			'syncit/Constant'
+			'sync-it/Constant'
 		],factory);
 	} else {
 		throw "Not Tested";

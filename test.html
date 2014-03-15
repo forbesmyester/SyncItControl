@@ -17,16 +17,11 @@
 		require.config({
 			baseUrl: '.',
 			paths: {
-				syncit: "node_modules/syncit",
+				"sync-it": "node_modules/sync-it",
 				mout: "node_modules/mout/src",
 				re: 'node_modules/re/lib/re'
 			},
 			packages: [
-				{
-					name: 'emitting-queue',
-					location: 'node_modules/emitting-queue',
-					main: 'index'
-				},
 				{
 					name: 'when',
 					location: 'node_modules/when',
@@ -73,7 +68,7 @@
                 
             mocha.setup('bdd')
             mocha.globals(['Module']);
-            require(['./test/index'], function(index) {
+            require(['./test/index', './test/emitting-queue'], function(index) {
                 mocha.run();
             });
         });

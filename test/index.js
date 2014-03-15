@@ -11,12 +11,12 @@
 			require('expect.js'),
 			require('get_tlid_encoder_decoder'),
 			require('eventsource-monitor'),
-			require('syncit/SyncIt'),
-			require('syncit/SyncItBuffer'),
-			require('syncit/FakeLocalStorage'),
-			require('syncit/SyncLocalStorage'),
-			require('syncit/AsyncLocalStorage'),
-			require('syncit/Path/AsyncLocalStorage'),
+			require('sync-it/SyncIt'),
+			require('sync-it/SyncItBuffer'),
+			require('sync-it/FakeLocalStorage'),
+			require('sync-it/SyncLocalStorage'),
+			require('sync-it/AsyncLocalStorage'),
+			require('sync-it/Path/AsyncLocalStorage'),
 			require('../index.js')
 		);
 	} else if (typeof define === 'function' && define.amd) {
@@ -24,12 +24,12 @@
 			[
 				'getTLIdEncoderDecoder',
 				'eventsource-monitor',
-				'syncit/SyncIt',
-				'syncit/SyncItBuffer',
-				'syncit/FakeLocalStorage',
-				'syncit/SyncLocalStorage',
-				'syncit/AsyncLocalStorage',
-				'syncit/Path/AsyncLocalStorage',
+				'sync-it/SyncIt',
+				'sync-it/SyncItBuffer',
+				'sync-it/FakeLocalStorage',
+				'sync-it/SyncLocalStorage',
+				'sync-it/AsyncLocalStorage',
+				'sync-it/Path/AsyncLocalStorage',
 				'../index.js'
 			],
 			factory.bind(this, expect)
@@ -449,18 +449,6 @@ describe('SyncItControl',function() {
 		// });
 		
 		syncItControl.connect(initialDatasets);
-	});
-	
-	it('will pass through EventSource messages into SyncIt', function() {
-		
-	});
-	
-	it('will go from Synched to Pushing Discovery to Synched', function() {
-		
-	});
-	
-	it('will re-establish everything on error', function() {
-		
 	});
 	
 });
