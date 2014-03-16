@@ -138,12 +138,12 @@ describe('SyncItControl',function() {
 								"t":1393446188224
 							}
 						],
-						"to":"cars@1"
+						"seqId":"cars@1"
 					};
 					return next(
 						null,
 						downloadedData.queueitems,
-						downloadedData.to
+						downloadedData.seqId
 					);
 				},
 			uploadChangeFunc = function(queueitem, next) {
@@ -151,9 +151,10 @@ describe('SyncItControl',function() {
 				},
 			initialDatasets = ['cars'],
 			attemptToMessage = function() {
+					var seqId = stateConfig.getItem('cars');
 					eventSources[0].pretendMessage({
 						command: 'queueitem',
-						to: 'cars@3',
+						seqId: 'cars@3',
 						queueitem: {
 							"s":"cars",
 							"k":"subaru",
@@ -171,6 +172,12 @@ describe('SyncItControl',function() {
 								'Drive': '4WD',
 								'Color': 'Red'
 							});
+							expect(
+								stateConfig.getItem('cars')
+							).to.equal(
+								'cars@' + 
+								(parseInt(seqId.replace(/.*@/, ''), 10) + 1)
+							);
 							done();
 						});
 					});
@@ -269,12 +276,12 @@ describe('SyncItControl',function() {
 								"t":1393446188224
 							}
 						],
-						"to": downloadedData.s + "@1"
+						"seqId": downloadedData.s + "@1"
 					};
 					return next(
 						null,
 						downloadedData.queueitems,
-						downloadedData.to
+						downloadedData.seqId
 					);
 				},
 			initialDatasets = ['cars'];
@@ -345,12 +352,12 @@ describe('SyncItControl',function() {
 								"t":1393446188224
 							}
 						],
-						"to": downloadedData.s + "@1"
+						"seqId": downloadedData.s + "@1"
 					};
 					return next(
 						null,
 						downloadedData.queueitems,
-						downloadedData.to
+						downloadedData.seqId
 					);
 				},
 			initialDatasets = ['cars'];

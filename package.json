@@ -1,6 +1,6 @@
 {
   "name": "syncit-control",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "description": "Manages SyncIt and EventSourceMonitor to hopefully produce a simple API which can help you create full SyncIt based projects, easily",
   "author": "Matthew Forrester <matt@keyboardwritescode.com>",
   "scripts": {

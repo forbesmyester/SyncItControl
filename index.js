@@ -286,7 +286,7 @@ Cls.prototype._process = function() {
 		feedOneDatasetIntoSyncIt(
 			data.queueitem.s,
 			[data.queueitem],
-			data.to,
+			data.seqId,
 			function(e) {
 				if (e !== SyncItConstant.Error.OK) {
 					transitionState.change('ERROR');
@@ -303,7 +303,12 @@ Cls.prototype._process = function() {
 				if (err != SyncItConstant.Error.OK) {
 					return next(err);
 				}
-				stateConfig.setItem(dataset, toDatasetVersion);
+				if (typeof toDatasetVersion !== 'undefined') {
+					stateConfig.setItem(dataset, toDatasetVersion);
+				} else {
+					throw "Attempting to store undefined within stateConfig(" +
+						dataset + ")"
+				}
 				next(err);
 			}
 		);
@@ -317,7 +322,12 @@ Cls.prototype._process = function() {
 	};
 	
 	var queueitemUploaded = function(queueitem, to) {
-		stateConfig.setItem(queueitem.s, to);
+		if (typeof to !== 'undefined') {
+			stateConfig.setItem(queueitem.s, to);
+		} else {
+			throw "Attempting to store undefined within stateConfig(" +
+				dataset + ")"
+		}
 		emit('uploaded-queueitem', queueitem, to);
 		syncIt.advance(queueitemAdvanced);
 	};
