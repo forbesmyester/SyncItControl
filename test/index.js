@@ -149,7 +149,7 @@ describe('SyncItControl',function() {
 			uploadChangeFunc = function(queueitem, next) {
 					next(null, "cars@2");
 				},
-			initialDatasets = ['cars'],
+			initialDataset = 'cars',
 			attemptToMessage = function() {
 					var seqId = stateConfig.getItem('cars');
 					eventSources[0].pretendMessage({
@@ -184,7 +184,7 @@ describe('SyncItControl',function() {
 				}
 		;
 		
-		stateConfig.setItem(initialDatasets[0], null);
+		stateConfig.setItem(initialDataset, null);
 		
 		var syncItControl = new SyncItControl(
 			syncIt,
@@ -197,7 +197,7 @@ describe('SyncItControl',function() {
 		
 		syncItControl.on('advanced-queueitem', function(queueitem) {
 			expect(queueitem.k).to.equal('bmw');
-			expect(stateConfig.getItem(initialDatasets[0])).to.equal('cars@2');
+			expect(stateConfig.getItem(initialDataset)).to.equal('cars@2');
 			attemptToMessage();
 		});
 		
@@ -208,7 +208,7 @@ describe('SyncItControl',function() {
 		
 		syncItControl.on('available', function(evt) {
 			eventOrder.push('available');
-			expect(evt.datasets).to.eql(initialDatasets);
+			expect(evt.datasets).to.eql([initialDataset]);
 		});
 		
 		syncItControl.on('uploaded-queueitem', function(queueitem, to) {
@@ -218,11 +218,12 @@ describe('SyncItControl',function() {
 		
 		syncItControl.on('synched', function(evt) {
 			eventOrder.push('synched');
-			expect(evt.datasets).to.eql(initialDatasets);
+			expect(evt.datasets).to.eql([initialDataset]);
 			expect(eventOrder).to.eql([
 				'available',
 				'event-source-created',
 				'added-managed-connection',
+				'addMonitoredDataset',
 				'downloads-started',
 				'synched'
 			]);
@@ -235,7 +236,9 @@ describe('SyncItControl',function() {
 			});
 		});
 		
-		syncItControl.connect(initialDatasets);
+		syncItControl.addMonitoredDataset(initialDataset, function() {
+			eventOrder.push('addMonitoredDataset');
+		});
 		
 	});
 	
@@ -284,9 +287,9 @@ describe('SyncItControl',function() {
 						downloadedData.seqId
 					);
 				},
-			initialDatasets = ['cars'];
+			initialDataset = 'cars';
 		
-		stateConfig.setItem(initialDatasets[0], null);
+		stateConfig.setItem(initialDataset, null);
 		
 		eventSourceMonitor.on('added-managed-connection', function() {
 			eventSources[0].open();
@@ -312,7 +315,7 @@ describe('SyncItControl',function() {
 			});
 		});
 		
-		syncItControl.connect(initialDatasets);
+		syncItControl.addMonitoredDataset(initialDataset);
 	});
 	
 	it('adding datasets use case (when pushing-discovery)', function(done) {
@@ -331,7 +334,9 @@ describe('SyncItControl',function() {
 					return eventSources[0];
 				},
 			eventSourceMonitor = new EventSourceMonitor(fakeEventSourceFactory),
-			stateConfig = getStateConfig(localStorage, userId);
+			stateConfig = getStateConfig(localStorage, userId),
+			addMonitoredDatasetsCalled = [],
+			addedPlanes = false;
 		
 		var conflictResolutionFunction = function() { expect().fail(); },
 			uploadChangeFunc = function() { expect().fail(); },
@@ -360,9 +365,9 @@ describe('SyncItControl',function() {
 						downloadedData.seqId
 					);
 				},
-			initialDatasets = ['cars'];
+			initialDataset = 'cars';
 		
-		stateConfig.setItem(initialDatasets[0], null);
+		stateConfig.setItem(initialDataset, null);
 		
 		eventSourceMonitor.on('added-managed-connection', function() {
 			eventSources[0].open();
@@ -379,18 +384,30 @@ describe('SyncItControl',function() {
 		
 		syncItControl.on('entered-state', function(state) {
 			if (state != 'pushing_discovery') { return; }
-			syncItControl.addMonitoredDataset('planes');
+			syncItControl.addMonitoredDataset('planes', function(e, newDs, nowConnected) {
+				expect(e).to.equal(null);
+				expect(newDs).to.eql(!addedPlanes);
+				addedPlanes = true;
+				addMonitoredDatasetsCalled.push('planes');
+				expect(nowConnected).to.eql(['cars', 'planes']);
+			});
 		});
 		
 		syncItControl.on('synched', function() {
 			syncIt.get('planes', 'lear', function(err, data) {
 				expect(err).to.equal(0);
 				expect(data).to.eql({Color: 'White'});
+				expect(addMonitoredDatasetsCalled).to.eql(['cars', 'planes', 'planes']);
 				done();
 			});
 		});
 		
-		syncItControl.connect(initialDatasets);
+		syncItControl.addMonitoredDataset(initialDataset, function(e, newDs, nowConnected) {
+			expect(e).to.equal(null);
+			expect(newDs).to.eql(true);
+			addMonitoredDatasetsCalled.push(initialDataset);
+			expect(nowConnected).to.eql(['cars']);
+		});
 	});
 	
 	it('it can recover from errors', function(done) {
@@ -423,7 +440,7 @@ describe('SyncItControl',function() {
 					}
 					next(new Error("Cannot upload"));
 				},
-			initialDatasets = ['cars']
+			initialDataset = 'cars'
 		;
 		
 		var syncItControl = new SyncItControl(
@@ -455,7 +472,7 @@ describe('SyncItControl',function() {
 		// 	console.log("CURRENT_STATE: ", state);
 		// });
 		
-		syncItControl.connect(initialDatasets);
+		syncItControl.addMonitoredDataset(initialDataset);
 	});
 	
 });

@@ -101,12 +101,13 @@ var Cls = function(syncIt, eventSourceMonitor, stateConfig, downloadDatasetFunc,
 	this._eventSourceMonitor = eventSourceMonitor;
 	this._downloadDatasetFunc = downloadDatasetFunc;
 	this._uploadChangeFunc = uploadChangeFunc;
-	this._datasets = false;
+	this._datasets = [];
+	this._addMonitoredCallbacks = {};
 	this._conflictResolutionFunction = conflictResolutionFunction;
 	this._stateConfig = stateConfig;
 	this._nextState = false;
 	this._transitionState = (function() {
-			var t = new TransitionState('RESET'),
+			var t = new TransitionState('DISCONNECTED'),
 				states = {
 					'DISCONNECTED': ['RESET'],
 					'RESET': ['DISCONNECTED', 'ANALYZE'],
@@ -131,10 +132,12 @@ var Cls = function(syncIt, eventSourceMonitor, stateConfig, downloadDatasetFunc,
 			}
 			return t;
 		})();
+	this._process();
 };
 
-Cls.prototype.addMonitoredDataset = function(datasetName) {
+Cls.prototype.addMonitoredDataset = function(datasetName, callback) {
 	var transitions = {
+			'DISCONNECTED': {now: true, toState: 'RESET'},
 			'RESET': {now: true, toState: 'RESET'},
 			'ANALYZE': {now: true, toState: 'RESET'},
 			'MISSING_DATASET__OFFLINE': {now: true, toState: 'RESET'},
@@ -151,41 +154,26 @@ Cls.prototype.addMonitoredDataset = function(datasetName) {
 			'ERROR': {now: false, toState: 'RESET'}
 		};
 	
-	if (this._datasets.indexOf(datasetName) !== -1) { return; }
+	if (this._datasets.indexOf(datasetName) !== -1) { 
+		if (callback !== undefined) {
+			return callback(null, false, this._datasets);
+		}
+		return;
+	}
+	
+	if (callback !== undefined) {
+		this._addMonitoredCallbacks[datasetName] = callback;
+	}
+	
 	this._datasets.push(datasetName);
 	if (!transitions.hasOwnProperty(this._transitionState.current())) {
 		throw "Must be in an unknown state!";
 	}
 	if (transitions[this._transitionState.current()].now) {
-		return this._transitionState.change(transitions[this._transitionState.current()].toState);
+		return this._transitionState.change(
+			transitions[this._transitionState.current()].toState);
 	}
 	this._nextState = transitions[this._transitionState.current()].toState;
-};
-
-Cls.prototype.connect = function(datasetsToAdd) {
-	
-	var i, l;
-	
-	if (this._datasets === false) {
-		if (!datasetsToAdd.length) {
-			throw "You must connect to initial datasets";
-		}
-		this._datasets = JSON.parse(JSON.stringify(datasetsToAdd));
-		return this._process();
-	}
-	
-	if (arguments.length) {
-		for (i=0, l=datasetsToAdd.length; i<l; i++) {
-			if (this._datasets.indexOf(datasetsToAdd[i])) {
-				this.addMonitoredDataset(datasetsToAdd[i]);
-			}
-		}
-	}
-	
-	if (this._transitionState.current() === 'DISCONNECTED') {
-		this._transitionState.change('RESET');
-	}
-	
 };
 
 Cls.prototype._process = function() {
@@ -201,7 +189,8 @@ Cls.prototype._process = function() {
 		syncIt = this._syncIt,
 		uploadQueue,
 		reRetryDone = false,
-		connectedUrl = false
+		connectedUrl = false,
+		addMonitoredCallbacks = this._addMonitoredCallbacks;
 	;
 	
 	var getUnknownDataset = function() {
@@ -264,18 +253,24 @@ Cls.prototype._process = function() {
 		}
 	};
 	
-	eventSourceMonitor.on('connected', function() {
-		connectedUrl = this._url;
+	var eventSourceChangeFunc = function(connObj) {
+		var urls = connObj.url.split('.');
+		for (var i=0; i<urls.length; i++) {
+			if (addMonitoredCallbacks.hasOwnProperty(urls[i])) {
+				addMonitoredCallbacks[urls[i]](null, true, urls);
+				delete addMonitoredCallbacks[urls[i]];
+			}
+		}
+		connectedUrl = connObj.url;
 		transitionWithinStatePath('CONNECTING', 'DOWNLOADING');
-	});
+	};
 	
-	eventSourceMonitor.on('url-changed', function() {
-		connectedUrl = this._url;
-		transitionWithinStatePath('CONNECTING', 'DOWNLOADING');
-	});
+	eventSourceMonitor.on('connected', eventSourceChangeFunc);
 	
-	eventSourceMonitor.on('disconnected', function() {
-		connectedUrl = false;
+	eventSourceMonitor.on('url-changed', eventSourceChangeFunc);
+	
+	eventSourceMonitor.on('disconnected', function(connObj) {
+		connectedUrl = [];
 		transitionState.change('DISCONNECTED');
 	});
 	
@@ -434,7 +429,6 @@ Cls.prototype._process = function() {
 		case 'ALL_DATASET__DOWNLOADING':  /* falls through */
 		case 'MISSING_DATASET__DOWNLOADING':  /* falls through */
 		case 'ADDING_DATASET__DOWNLOADING':	 /* falls through */
-			emit('online', getBaseEventObj());
 			doDownloads(datasets, function(err, datasetsData) {
 				
 				var erroredDatasets = [],
@@ -500,7 +494,6 @@ Cls.prototype._process = function() {
 			});
 			break;
 		case 'PUSHING':
-			emit('pushing', getBaseEventObj());
 			pushChangesInSyncIt();
 			break;
 		case 'SYNCHED':
@@ -542,11 +535,8 @@ Cls.prototype._process = function() {
 };
 
 addEvents(Cls, [
-	'offline',
-	'online',
 	'pushing',
 	'synched',
-	'adding-new-dataset',
 	'added-new-dataset',
 	'removed-dataset',
 	'available',
