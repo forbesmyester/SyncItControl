@@ -175,6 +175,11 @@ Cls.prototype.addMonitoredDataset = function(datasetName, callback) {
 	}
 	this._nextState = transitions[this._transitionState.current()].toState;
 };
+    
+Cls.prototype.connect = function() {
+    if (this._transitionState.current() !== 'DISCONNECTED') { return false; }
+    this._transitionState.change('RESET');
+};
 
 Cls.prototype._process = function() {
 	
@@ -190,7 +195,7 @@ Cls.prototype._process = function() {
 		uploadQueue,
 		reRetryDone = false,
 		connectedUrl = false,
-		addMonitoredCallbacks = this._addMonitoredCallbacks;
+		addMonitoredCallbacks = this._addMonitoredCallbacks
 	;
 	
 	var getUnknownDataset = function() {
@@ -269,7 +274,7 @@ Cls.prototype._process = function() {
 	
 	eventSourceMonitor.on('url-changed', eventSourceChangeFunc);
 	
-	eventSourceMonitor.on('disconnected', function(connObj) {
+	eventSourceMonitor.on('disconnected', function() {
 		connectedUrl = [];
 		transitionState.change('DISCONNECTED');
 	});
@@ -302,7 +307,7 @@ Cls.prototype._process = function() {
 					stateConfig.setItem(dataset, toDatasetVersion);
 				} else {
 					throw "Attempting to store undefined within stateConfig(" +
-						dataset + ")"
+						dataset + ")";
 				}
 				next(err);
 			}
@@ -317,14 +322,20 @@ Cls.prototype._process = function() {
 	};
 	
 	var queueitemUploaded = function(queueitem, to) {
+        if (to === null) {
+            // There has been no error, but the item caused no change on the
+            // server... This means that it was probably already uploaded.
+            return;
+        }
 		if (typeof to !== 'undefined') {
 			stateConfig.setItem(queueitem.s, to);
 		} else {
 			throw "Attempting to store undefined within stateConfig(" +
-				dataset + ")"
+				queueitem.s + ")";
 		}
 		emit('uploaded-queueitem', queueitem, to);
 		syncIt.advance(queueitemAdvanced);
+        return;
 	};
 	
 	var pushChangesInSyncIt = function() {
@@ -350,7 +361,7 @@ Cls.prototype._process = function() {
 			getQueueitemFromSyncIt(function(e, data) {
 				if (e) { transitionState.change('ERROR'); }
 				if (data === null) {
-					return transitionState.change('SYNCHED');
+					return transitionState.change('PUSHING_DISCOVERY');
 				}
 				pushUploadQueue.push(data);
 			});
@@ -527,7 +538,9 @@ Cls.prototype._process = function() {
 	uploadQueue.on('item-processed', queueitemUploaded);
 	uploadQueue.on('item-could-not-be-processed', uploadError);
 	syncIt.listenForAddedToPath(function(dataset, datakey, queueitem) {
-		uploadQueue.push(queueitem);
+        if (transitionState.current() === 'SYNCHED') {
+            uploadQueue.push(queueitem);
+        }
 	});
 	
 	transitionState.start();
@@ -535,14 +548,11 @@ Cls.prototype._process = function() {
 };
 
 addEvents(Cls, [
-	'pushing',
 	'synched',
-	'added-new-dataset',
-	'removed-dataset',
 	'available',
-	'unavailable',
 	'uploaded-queueitem',
-	'advanced-queueitem',
+    'advanced-queueitem',   // you could do this on SyncIt itself, so maybe
+                            // this should not be here...
 	'error-uploading-queueitem',
 	'error-advancing-queueitem',
 	'entered-state',
