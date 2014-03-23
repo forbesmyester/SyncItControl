@@ -216,10 +216,11 @@ describe('SyncItControl',function() {
 			expect(to).to.equal('cars@2');
 		});
 		
-		syncItControl.on('synched', function(evt) {
+		syncItControl.on('entered-state', function(state) {
+			if (state !== 'synched') { return; }
 			eventOrder.push('synched');
-			expect(evt.datasets).to.eql([initialDataset]);
-			expect(eventOrder).to.eql([
+			expect(eventOrder[eventOrder.length-1]).to.equal('synched');
+			expect(eventOrder.slice(0,6)).to.eql([
 				'available',
 				'event-source-created',
 				'added-managed-connection',
@@ -227,13 +228,15 @@ describe('SyncItControl',function() {
 				'downloads-started',
 				'synched'
 			]);
-			syncIt.get('cars', 'subaru', function(e, data) {
-				expect(e).to.equal(0);
-				expect(data).to.eql({"Color":"Red"});
-				syncIt.set('cars', 'bmw', {Color: 'blue'}, function(e) {
+			if (eventOrder.length < 7) {
+				syncIt.get('cars', 'subaru', function(e, data) {
 					expect(e).to.equal(0);
+					expect(data).to.eql({"Color":"Red"});
+					syncIt.set('cars', 'bmw', {Color: 'blue'}, function(e) {
+						expect(e).to.equal(0);
+					});
 				});
-			});
+			}
 		});
 		
 		syncItControl.addMonitoredDataset(initialDataset, function() {
@@ -304,9 +307,11 @@ describe('SyncItControl',function() {
 			conflictResolutionFunction
 		);
 		
-		syncItControl.once('synched', function() {
+		syncItControl.on('entered-state', function(state) {
+			if (state !== 'synched') { return; }
 			syncItControl.addMonitoredDataset('planes');
-			syncItControl.once('synched', function() {
+			syncItControl.on('entered-state', function(state) {
+				if (state !== 'synched') { return; }
 				syncIt.get('planes', 'lear', function(err, data) {
 					expect(err).to.equal(0);
 					expect(data).to.eql({Color: 'White'});
@@ -393,7 +398,8 @@ describe('SyncItControl',function() {
 			});
 		});
 		
-		syncItControl.on('synched', function() {
+		syncItControl.on('entered-state', function(state) {
+			if (state !== 'synched') { return; }
 			syncIt.get('planes', 'lear', function(err, data) {
 				expect(err).to.equal(0);
 				expect(data).to.eql({Color: 'White'});
@@ -439,6 +445,7 @@ describe('SyncItControl',function() {
                         expect(uploadAttempts).to.equal(3);
 						uploadedQueueitem = queueitem;
 						next(null, 'cars@1');
+						return;
 					}
 					next(new Error("Cannot upload"));
 				},
@@ -457,13 +464,14 @@ describe('SyncItControl',function() {
         syncItControl.on('error-uploading-queueitem', function(_, queueitem) {
             uploadAttempts++;
             expect(queueitem.s).to.equal('cars');
-        })
+        });
 		
 		eventSourceMonitor.on('added-managed-connection', function() {
 			eventSources[0].open();
 		});
 		
-		syncItControl.on('synched', function() {
+		syncItControl.on('entered-state', function(state) {
+			if (state !== 'synched') { return; }
 			if (++synchedCount == 2) {
 				expect(uploadedQueueitem.s).to.equal('cars');
 				expect(uploadedQueueitem.k).to.equal('ford');
@@ -496,10 +504,7 @@ describe('SyncItControl',function() {
 					return eventSources[0];
 				},
 			eventSourceMonitor = new EventSourceMonitor(fakeEventSourceFactory),
-			stateConfig = getStateConfig(localStorage, userId),
-			synchedCount = 0,
-			errorCount = 0,
-			uploadedQueueitem = null
+			stateConfig = getStateConfig(localStorage, userId)
 		;
 		
 		var conflictResolutionFunction = function() { expect().fail(); },
@@ -508,7 +513,7 @@ describe('SyncItControl',function() {
 				},
 			uploadChangeFunc = function(queueitem, next) {
                 next(null, null);
-                expect(stateConfig.getItem('cars') !== undefined)
+                expect(stateConfig.getItem('cars')).to.equal(undefined);
                 syncIt.getFirst(function(err, data) {
                     expect(err).to.equal(0);
                     expect(data.k).to.equal('volvo');
@@ -531,10 +536,12 @@ describe('SyncItControl',function() {
 			eventSources[0].open();
 		});
 		
-		syncItControl.once('synched', function() {
+		syncItControl.on('entered-state', function(state) {
+			if (state !== 'synched') { return; }
             eventSources[0].pretendDisconnected();
             syncItControl.connect();
-            syncItControl.once('synched', function() {
+			syncItControl.once('entered-state', function(state) {
+				if (state !== 'synched') { return; }
                 syncIt.set('cars', 'volvo', { size: 'big' }, function(err) {
                     expect(err).to.equal(0);
                 });

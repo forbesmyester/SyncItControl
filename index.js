@@ -122,7 +122,7 @@ var Cls = function(syncIt, eventSourceMonitor, stateConfig, downloadDatasetFunc,
 					'ADDING_DATASET__DOWNLOADING': ['DISCONNECTED', 'PUSHING_DISCOVERY', 'RESET', 'ADDING_DATASET__DOWNLOADING', 'ERROR'],
 					'PUSHING_DISCOVERY': ['DISCONNECTED', 'SYNCHED', 'PUSHING', 'RESET', 'ADDING_DATASET__CONNECTING', 'ERROR'],
 					'PUSHING': ['DISCONNECTED', 'PUSHING_DISCOVERY', 'RESET', 'ADDING_DATASET__CONNECTING', 'SYNCHED', 'ERROR'],
-					'SYNCHED': ['DISCONNECTED', 'RESET', 'ADDING_DATASET__CONNECTING', 'ERROR'],
+					'SYNCHED': ['DISCONNECTED', 'RESET', 'ADDING_DATASET__CONNECTING', 'PUSHING_DISCOVERY', 'ERROR'],
 					'ERROR': ['DISCONNECTED', 'RESET']
 				};
 			for (var k in states) {
@@ -166,6 +166,7 @@ Cls.prototype.addMonitoredDataset = function(datasetName, callback) {
 	}
 	
 	this._datasets.push(datasetName);
+    this._datasets.sort();
 	if (!transitions.hasOwnProperty(this._transitionState.current())) {
 		throw "Must be in an unknown state!";
 	}
@@ -192,7 +193,6 @@ Cls.prototype._process = function() {
 		uploadChangeFunc = this._uploadChangeFunc,
 		conflictResolutionFunction = this._conflictResolutionFunction,
 		syncIt = this._syncIt,
-		uploadQueue,
 		reRetryDone = false,
 		connectedUrl = false,
 		addMonitoredCallbacks = this._addMonitoredCallbacks
@@ -314,34 +314,49 @@ Cls.prototype._process = function() {
 		);
 	};
 	
-	var uploadError = function(e, queueitem) {
-		uploadQueue.empty();
-		uploadQueue.resume();
-		emit('error-uploading-queueitem', e, queueitem);
-		transitionState.change('ERROR');
-	};
-	
-	var queueitemUploaded = function(queueitem, to) {
-        if (to === null) {
-            // There has been no error, but the item caused no change on the
-            // server... This means that it was probably already uploaded.
-            return;
-        }
-		if (typeof to !== 'undefined') {
-			stateConfig.setItem(queueitem.s, to);
-		} else {
-			throw "Attempting to store undefined within stateConfig(" +
-				queueitem.s + ")";
-		}
-		emit('uploaded-queueitem', queueitem, to);
-		syncIt.advance(queueitemAdvanced);
-        return;
-	};
-	
-	var pushChangesInSyncIt = function() {
+	var pushChangesToServer = (function() {
 		
 		var pushUploadQueue;
 		
+		var uploadError = function(e, queueitem) {
+			pushUploadQueue.empty();
+			pushUploadQueue.resume();
+			emit('error-uploading-queueitem', e, queueitem);
+			transitionState.change('ERROR');
+		};
+
+		var queueitemUploaded = function(queueitem, to, next) {
+
+			var thenContinue = function(e) {
+				if (e !== SyncItConstant.Error.OK) {
+					emit(
+						'error-advancing-queueitem',
+						Array.prototype.slice.call(arguments, 0)
+					);
+					return transitionState.change(
+						'ERROR'
+					);
+				}
+				emit('advanced-queueitem', queueitem);
+				next(null);
+			};
+
+			if (to === null) {
+				// There has been no error, but the item caused no change on the
+				// server... This means that it was probably already uploaded.
+				syncIt.advance(thenContinue);
+				return;
+			}
+			if (typeof to !== 'undefined') {
+				stateConfig.setItem(queueitem.s, to);
+			} else {
+				throw "Attempting to store undefined within stateConfig(" +
+					queueitem.s + ")";
+			}
+			emit('uploaded-queueitem', queueitem, to);
+			syncIt.advance(thenContinue);
+		};
+
 		var getQueueitemFromSyncIt = function(next) {
 			syncIt.getFirst(function(err, pathItem) {
 				var ok = [SyncItConstant.Error.NO_DATA_FOUND, SyncItConstant.Error.OK];
@@ -359,7 +374,7 @@ Cls.prototype._process = function() {
 		
 		var getAndQueue = function() {
 			getQueueitemFromSyncIt(function(e, data) {
-				if (e) { transitionState.change('ERROR'); }
+				if (e) { return transitionState.change('ERROR'); }
 				if (data === null) {
 					return transitionState.change('PUSHING_DISCOVERY');
 				}
@@ -369,12 +384,13 @@ Cls.prototype._process = function() {
 		
 		pushUploadQueue = new EmittingQueue(uploadChangeFunc);
 		pushUploadQueue.on('item-processed', function(queueitem, to) {
-			queueitemUploaded(queueitem, to);
-			getAndQueue();
+			queueitemUploaded(queueitem, to, function() {
+				getAndQueue();
+			});
 		});
 		pushUploadQueue.on('item-could-not-be-processed', uploadError);
-		getAndQueue();
-	};
+		return getAndQueue;
+	}());
 	
 	var processStateChange = function(oldState, currentState) {
 		
@@ -426,7 +442,6 @@ Cls.prototype._process = function() {
 			break;
 		case 'ALL_DATASET__CONNECTING': /* falls through */
 		case 'MISSING_DATASET__CONNECTING':
-			datasets.sort();
 			if (connectedUrl === datasets.join('.')) {
 				transitionWithinStatePath('CONNECTING', 'DOWNLOADING');
 				return;
@@ -466,7 +481,7 @@ Cls.prototype._process = function() {
 						arrayMap(erroredDatasets, function(eds) {
 							stateConfig.setItem(eds, null);
 							emit(
-								'feed-version-error-caused-history-destroy',
+								'feed-version-error',
 								eds
 							);
 						});
@@ -505,13 +520,12 @@ Cls.prototype._process = function() {
 			});
 			break;
 		case 'PUSHING':
-			pushChangesInSyncIt();
+			pushChangesToServer();
 			break;
 		case 'SYNCHED':
 			if (reRetryDone !== false) {
 				reRetryDone(null);
 			}
-			emit('synched', getBaseEventObj());
 			break;
 		}
 	}.bind(this);
@@ -521,25 +535,9 @@ Cls.prototype._process = function() {
 		processStateChange(null, state);
 	});
 	
-	var queueitemAdvanced = function(e, dataset, datakey, queueitem) {
-		if (e !== SyncItConstant.Error.OK) {
-			emit(
-				'error-advancing-queueitem',
-				Array.prototype.slice.call(arguments, 0)
-			);
-			return transitionState.change(
-				'ERROR'
-			);
-		}
-		emit('advanced-queueitem', queueitem);
-	};
-	
-	uploadQueue = new EmittingQueue(uploadChangeFunc);
-	uploadQueue.on('item-processed', queueitemUploaded);
-	uploadQueue.on('item-could-not-be-processed', uploadError);
-	syncIt.listenForAddedToPath(function(dataset, datakey, queueitem) {
+	syncIt.listenForAddedToPath(function() {
         if (transitionState.current() === 'SYNCHED') {
-            uploadQueue.push(queueitem);
+            transitionState.change('PUSHING_DISCOVERY');
         }
 	});
 	
@@ -548,7 +546,6 @@ Cls.prototype._process = function() {
 };
 
 addEvents(Cls, [
-	'synched',
 	'available',
 	'uploaded-queueitem',
     'advanced-queueitem',   // you could do this on SyncIt itself, so maybe
@@ -557,7 +554,7 @@ addEvents(Cls, [
 	'error-advancing-queueitem',
 	'entered-state',
 	'error-cycle-caused-stoppage',
-	'feed-version-error-caused-history-destroy'
+	'feed-version-error'
 ]);
 
 
