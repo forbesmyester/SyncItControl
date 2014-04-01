@@ -42,7 +42,7 @@
 	SyncItBuffer, FakeLocalStorage, SyncLocalStorage, AsyncLocalStorage,
 	Path_AsyncLocalStorage, SyncItControl) {
 
-    "use strict";
+	"use strict";
 
 	var FakeEventSource = function(url) {
 		this._url = url;
@@ -432,7 +432,7 @@ describe('SyncItControl',function() {
 			stateConfig = getStateConfig(localStorage, userId),
 			synchedCount = 0,
 			errorCount = 0,
-            uploadAttempts = 0,
+			uploadAttempts = 0,
 			uploadedQueueitem = null
 		;
 		
@@ -442,7 +442,7 @@ describe('SyncItControl',function() {
 				},
 			uploadChangeFunc = function(queueitem, next) {
 					if (++errorCount > 3) {
-                        expect(uploadAttempts).to.equal(3);
+						expect(uploadAttempts).to.equal(3);
 						uploadedQueueitem = queueitem;
 						next(null, 'cars@1');
 						return;
@@ -451,7 +451,7 @@ describe('SyncItControl',function() {
 				},
 			initialDataset = 'cars'
 		;
-        
+		
 		var syncItControl = new SyncItControl(
 			syncIt,
 			eventSourceMonitor,
@@ -461,10 +461,10 @@ describe('SyncItControl',function() {
 			conflictResolutionFunction
 		);
 		
-        syncItControl.on('error-uploading-queueitem', function(_, queueitem) {
-            uploadAttempts++;
-            expect(queueitem.s).to.equal('cars');
-        });
+		syncItControl.on('error-uploading-queueitem', function(_, queueitem) {
+			uploadAttempts++;
+			expect(queueitem.s).to.equal('cars');
+		});
 		
 		eventSourceMonitor.on('added-managed-connection', function() {
 			eventSources[0].open();
@@ -504,7 +504,8 @@ describe('SyncItControl',function() {
 					return eventSources[0];
 				},
 			eventSourceMonitor = new EventSourceMonitor(fakeEventSourceFactory),
-			stateConfig = getStateConfig(localStorage, userId)
+			stateConfig = getStateConfig(localStorage, userId),
+			synchedCount = 0
 		;
 		
 		var conflictResolutionFunction = function() { expect().fail(); },
@@ -512,14 +513,14 @@ describe('SyncItControl',function() {
 					return next(null, [], null);
 				},
 			uploadChangeFunc = function(queueitem, next) {
-                next(null, null);
-                expect(stateConfig.getItem('cars')).to.equal(undefined);
-                syncIt.getFirst(function(err, data) {
-                    expect(err).to.equal(0);
-                    expect(data.k).to.equal('volvo');
-                    done();
-                });
-            },
+				next(null, null);
+				expect(stateConfig.getItem('cars')).to.equal(null);
+				syncIt.getFirst(function(err, data) {
+					expect(err).to.equal(0);
+					expect(data.k).to.equal('volvo');
+					done();
+				});
+			},
 			initialDataset = 'cars'
 		;
 		
@@ -537,23 +538,27 @@ describe('SyncItControl',function() {
 		});
 		
 		syncItControl.on('entered-state', function(state) {
+			if (synchedCount > 0) { return; }
 			if (state !== 'synched') { return; }
-            eventSources[0].pretendDisconnected();
-            syncItControl.connect();
-			syncItControl.once('entered-state', function(state) {
+			synchedCount = synchedCount + 1;
+			eventSources[0].pretendDisconnected();
+			syncItControl.on('entered-state', function(state) {
+				if (synchedCount > 1) { return; }
 				if (state !== 'synched') { return; }
-                syncIt.set('cars', 'volvo', { size: 'big' }, function(err) {
-                    expect(err).to.equal(0);
-                });
-            });
+				synchedCount = synchedCount + 1;
+				syncIt.set('cars', 'volvo', { size: 'big' }, function(err) {
+					expect(err).to.equal(0);
+				});
+			});
+			syncItControl.connect();
 		});
 		
 		// syncItControl.on('entered-state', function(state) {
-        // console.log("CURRENT_STATE: ", state);
+		// console.log("CURRENT_STATE: ", state);
 		// });
 		syncItControl.addMonitoredDataset(initialDataset);
 	});
-    
+
 });
 
 }));
