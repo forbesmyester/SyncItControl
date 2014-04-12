@@ -351,7 +351,7 @@ Cls.prototype._process = function() {
 
 		var queueitemUploaded = function(queueitem, to, next) {
 
-			var thenContinue = function(e) {
+			var thenContinue = function(e, next) {
 				addDebug('QUEUEITEM_ADVANCED', queueitem, to, e);
 				if (e !== SyncItConstant.Error.OK) {
 					emit(
@@ -370,7 +370,9 @@ Cls.prototype._process = function() {
 				addDebug('QUEUEITEM_UPLOADED_NULL: ', queueitem, to);
 				// There has been no error, but the item caused no change on the
 				// server... This means that it was probably already uploaded.
-				syncIt.advance(thenContinue);
+				syncIt.advance(function(e) {
+					thenContinue(e, next);
+				});
 				return;
 			}
 			if (typeof to === 'undefined') {
@@ -379,10 +381,14 @@ Cls.prototype._process = function() {
 					queueitem.s + ")";
 			}
 			addDebug('QUEUEITEM_UPLOADED: ', queueitem, to);
-			stateConfig.setItem(queueitem.s, to);
-			addDebug('STATECONFIG_SET_THEN_ADVANCE: ', queueitem, to);
 			emit('uploaded-queueitem', queueitem, to);
-			syncIt.advance(thenContinue);
+			syncIt.advance(function(e) {
+				if (e === SyncItConstant.Error.OK) {
+					addDebug('STATECONFIG_SET: ', queueitem, to);
+					stateConfig.setItem(queueitem.s, to);
+				}
+				thenContinue(e, next);
+			});
 		};
 
 		var getQueueitemFromSyncIt = function(next) {
