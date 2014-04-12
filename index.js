@@ -106,6 +106,7 @@ var Cls = function(syncIt, eventSourceMonitor, stateConfig, downloadDatasetFunc,
 	this._conflictResolutionFunction = conflictResolutionFunction;
 	this._stateConfig = stateConfig;
 	this._nextState = false;
+	this._isInDebugMode = true;
 	this._transitionState = (function() {
 			var t = new TransitionState('DISCONNECTED'),
 				states = {
@@ -133,6 +134,14 @@ var Cls = function(syncIt, eventSourceMonitor, stateConfig, downloadDatasetFunc,
 			return t;
 		})();
 	this._process();
+};
+
+Cls.prototype._addDebug = function(/* Variable set of parameters */) {
+	if (!this._isInDebugMode) { return; }
+	var debug = this._stateConfig.getItem('_debug');
+	if (debug === null) { debug = []; }
+	debug.push(arguments);
+	this._stateConfig.setItem('_debug', debug);
 };
 
 Cls.prototype.addMonitoredDataset = function(datasetName, callback) {
@@ -171,14 +180,17 @@ Cls.prototype.addMonitoredDataset = function(datasetName, callback) {
 		throw "Must be in an unknown state!";
 	}
 	if (transitions[this._transitionState.current()].now) {
+		this._addDebug('ADDING_DATASET_IMMEDIATE: ' + datasetName);
 		return this._transitionState.change(
 			transitions[this._transitionState.current()].toState);
 	}
+	this._addDebug('ADDING_DATASET_DELAYED: ' + datasetName);
 	this._nextState = transitions[this._transitionState.current()].toState;
 };
     
 Cls.prototype.connect = function() {
     if (this._transitionState.current() !== 'DISCONNECTED') { return false; }
+	this._addDebug('CONNECT: RESET');
     this._transitionState.change('RESET');
 };
 
@@ -195,7 +207,8 @@ Cls.prototype._process = function() {
 		syncIt = this._syncIt,
 		reRetryDone = false,
 		connectedUrl = false,
-		addMonitoredCallbacks = this._addMonitoredCallbacks
+		addMonitoredCallbacks = this._addMonitoredCallbacks,
+		addDebug = this._addDebug.bind(this);
 	;
 	
 	var getUnknownDataset = function() {
@@ -236,6 +249,7 @@ Cls.prototype._process = function() {
 				var retData = objectMap(allData, function(ar) {
 					return { data: ar[0], toVersion: ar[1] };
 				});
+				addDebug('DATA_DOWNLOADED: ', retData);
 				return next(null, retData);
 			},
 			function(err) {
@@ -260,8 +274,10 @@ Cls.prototype._process = function() {
 	
 	var eventSourceChangeFunc = function(connObj) {
 		var urls = connObj.url.split('.');
+		addDebug('EVENTSOURCE_CHANGE_URL: ', connObj.url);
 		for (var i=0; i<urls.length; i++) {
 			if (addMonitoredCallbacks.hasOwnProperty(urls[i])) {
+				addDebug('EVENTSOURCE_CHANGE_URL_CALLBACK: ', urls[i]);
 				addMonitoredCallbacks[urls[i]](null, true, urls);
 				delete addMonitoredCallbacks[urls[i]];
 			}
@@ -289,23 +305,30 @@ Cls.prototype._process = function() {
 			data.seqId,
 			function(e) {
 				if (e !== SyncItConstant.Error.OK) {
-					transitionState.change('ERROR');
+					addDebug('MESSAGED_ERROR: ', data);
+					return transitionState.change('ERROR');
 				}
+				addDebug('MESSAGED_SUCCESS: ', data);
 			}
 		);
 	});
 	
 	var feedOneDatasetIntoSyncIt = function(dataset, queueitems, toDatasetVersion, next) {
+		addDebug('FEED: ', dataset, queueitems, toDatasetVersion);
 		syncIt.feed(
 			queueitems,
 			conflictResolutionFunction,
 			function(err) {
+				addDebug('FEED_CALLBACK: ', dataset, queueitems, toDatasetVersion);
 				if (err != SyncItConstant.Error.OK) {
+					addDebug('FEED_CALLBACK_ERROR: ', err);
 					return next(err);
 				}
 				if (typeof toDatasetVersion !== 'undefined') {
+					addDebug('FEED_CALLBACK_SET_TO_DATASET_VERSION: ', toDatasetVersion);
 					stateConfig.setItem(dataset, toDatasetVersion);
 				} else {
+					addDebug('FEED_CALLBACK_THROW: ', toDatasetVersion);
 					throw "Attempting to store undefined within stateConfig(" +
 						dataset + ")";
 				}
@@ -319,6 +342,7 @@ Cls.prototype._process = function() {
 		var pushUploadQueue;
 		
 		var uploadError = function(e, queueitem) {
+			addDebug('UPLOAD_ERROR: ', e, queueitem);
 			pushUploadQueue.empty();
 			pushUploadQueue.resume();
 			emit('error-uploading-queueitem', e, queueitem);
@@ -328,6 +352,7 @@ Cls.prototype._process = function() {
 		var queueitemUploaded = function(queueitem, to, next) {
 
 			var thenContinue = function(e) {
+				addDebug('QUEUEITEM_ADVANCED', queueitem, to, e);
 				if (e !== SyncItConstant.Error.OK) {
 					emit(
 						'error-advancing-queueitem',
@@ -342,17 +367,20 @@ Cls.prototype._process = function() {
 			};
 
 			if (to === null) {
+				addDebug('QUEUEITEM_UPLOADED_NULL: ', queueitem, to);
 				// There has been no error, but the item caused no change on the
 				// server... This means that it was probably already uploaded.
 				syncIt.advance(thenContinue);
 				return;
 			}
-			if (typeof to !== 'undefined') {
-				stateConfig.setItem(queueitem.s, to);
-			} else {
+			if (typeof to === 'undefined') {
+				addDebug('QUEUEITEM_UPLOADED_THROW: ', queueitem, to);
 				throw "Attempting to store undefined within stateConfig(" +
 					queueitem.s + ")";
 			}
+			addDebug('QUEUEITEM_UPLOADED: ', queueitem, to);
+			stateConfig.setItem(queueitem.s, to);
+			addDebug('STATECONFIG_SET_THEN_ADVANCE: ', queueitem, to);
 			emit('uploaded-queueitem', queueitem, to);
 			syncIt.advance(thenContinue);
 		};
@@ -396,6 +424,8 @@ Cls.prototype._process = function() {
 		
 		var nextState;
 		
+		addDebug('ENTERED_STATE: ', oldState, currentState, this._nextState);
+		
 		if (this._nextState) {
 			if (currentState !== 'ERROR') {
 				nextState = this._nextState;
@@ -403,7 +433,7 @@ Cls.prototype._process = function() {
 				return transitionState.change(nextState);
 			} else { return; }
 		}
-		
+
 		emit('entered-state', currentState.toLowerCase());
 		
 		switch (currentState) {
