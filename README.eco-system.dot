@@ -1,0 +1,38 @@
+digraph a { 
+
+	nodesep=2
+
+	subgraph clusterbrowser {
+		label = "Browser / PhoneGap";
+		subgraph clusteryourcode {
+			label = "Your Code";
+			style = "bold";
+			App;
+			ConflictResolutionFunction[label="Conflict Resolution"];
+		}
+		SyncIt;
+		SyncItControl
+	}
+
+	subgraph clusterserver {
+		labelloc="b";
+		label = "Server";
+		SyncItServer [label="SyncIt Server"];
+		MongoDB;
+		subgraph clusteryourcode2 {
+			label = "Your Code";
+			style = "bold";
+			ServerCode [label="Website"];
+		}
+	}
+
+	App -> SyncIt [label="get() / set()"];
+	SyncIt -> SyncItControl [label="listenForAddedToPath()"];
+	SyncItControl -> SyncItServer [label="XHR" style="dashed"];
+	SyncItServer -> SyncItControl [label="EventSource" style="dashed"];
+	SyncItControl -> SyncIt [label="feed()"];
+	SyncIt -> ConflictResolutionFunction;
+	SyncItServer -> ServerCode [label="events" dir="both"];
+	SyncItServer -> MongoDB [dir="both"];
+}
+
