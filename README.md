@@ -24,7 +24,7 @@ It does this using the following methods:
 
 On the client you have Both SyncIt and SyncItControl. Your App will perform `get` and `set` operations on SyncIt and SyncItControl will manage uploading and downloading changes to / from the server and conflict resolution with the callback that you provide.
 
-![bin/README/eco-system.png](The SyncIt eco system: Where does SyncItControl sit)
+![bin/README/img/eco-system.png](The SyncIt eco system: Where does SyncItControl sit)
 
 ## How do you use SyncItControl?
 
