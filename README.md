@@ -22,7 +22,7 @@ It does this using the following methods:
 
 ## How does it fit into the SyncIt eco system
 
-On the client you have Both SyncIt and SyncItControl. Your App will perform `get` and `set` operations on SyncIt and SyncItControl will manage uploading and downloading changes to / from the server and conflict resolution with the callback that you provide.
+On the client you have Both SyncIt and SyncItControl. Your App will perform `get()` and `set()` operations on SyncIt and SyncItControl will manage uploading and downloading changes to / from the server and conflict resolution with the callback that you provide.
 
 ![The SyncIt eco system: Where does SyncItControl sit](bin/README/img/eco-system.png)
 
