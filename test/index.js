@@ -17,6 +17,7 @@
 			require('sync-it/SyncLocalStorage'),
 			require('sync-it/AsyncLocalStorage'),
 			require('sync-it/Path/AsyncLocalStorage'),
+			require('../StoreSequenceId.js'),
 			require('../index.js')
 		);
 	} else if (typeof define === 'function' && define.amd) {
@@ -30,6 +31,7 @@
 				'sync-it/SyncLocalStorage',
 				'sync-it/AsyncLocalStorage',
 				'sync-it/Path/AsyncLocalStorage',
+				'../StoreSequenceId.js',
 				'../index.js'
 			],
 			factory.bind(this, expect)
@@ -40,7 +42,7 @@
 	}
 }(this, function (expect, getTLIdEncoderDecoder, EventSourceMonitor, SyncIt, 
 	SyncItBuffer, FakeLocalStorage, SyncLocalStorage, AsyncLocalStorage,
-	Path_AsyncLocalStorage, SyncItControl) {
+	Path_AsyncLocalStorage, StoreSequenceId, SyncItControl) {
 
 	"use strict";
 
@@ -71,18 +73,25 @@
 		});
 	};
 
-var getStateConfig = function(localStorage, userId) {
+var mainTimestamp = 1392885440069;
+var getStoreSequenceId = function(localStorage, userId) {
 	// data format = { dataset-[dataset]: [version] }
-	return new SyncLocalStorage(
-		localStorage,
-		'sic-state-' + userId,
-		JSON.stringify,
-		JSON.parse
+	var tLEncoderDecoder = getTLIdEncoderDecoder(mainTimestamp, 2),
+		stateConfig = new SyncLocalStorage(
+			localStorage,
+			'sic-state-' + userId,
+			JSON.stringify,
+			JSON.parse
+		);
+	
+	return new StoreSequenceId(
+		stateConfig,
+		tLEncoderDecoder.sort
 	);
 };
 
 var getSyncIt = function(localStorage, userId) {
-	var tLEncoderDecoder = getTLIdEncoderDecoder(1392885440069, 2),
+	var tLEncoderDecoder = getTLIdEncoderDecoder(mainTimestamp, 2),
 		asyncLocalStorage = new AsyncLocalStorage(
 			localStorage,
 			'sic-' + userId,
@@ -120,7 +129,7 @@ describe('SyncItControl',function() {
 					return eventSources[0];
 				},
 			eventSourceMonitor = new EventSourceMonitor(fakeEventSourceFactory),
-			stateConfig = getStateConfig(localStorage, userId)
+			stateConfig = getStoreSequenceId(localStorage, userId)
 		;
 		
 		var conflictResolutionFunction = function() { expect().fail(); },
@@ -150,8 +159,24 @@ describe('SyncItControl',function() {
 					next(null, "cars@2");
 				},
 			initialDataset = 'cars',
-			attemptToMessage = function() {
-					var seqId = stateConfig.getItem('cars');
+			attemptToMessageSelf = function(next) {
+					// Our own message re-echo'd, should be ignored...
+					eventSources[0].pretendMessage({
+						command: 'queueitem',
+						seqId: 'cars@2',
+						queueitem: {
+							"s":"cars",
+							"k":"subaru",
+							"b":0,
+							"m":"user-aaa",
+							"u":{ "$set": {"Drive":"4WD", "Color":"Red"} },
+							"o":"update",
+							"t":1393446188229
+						}
+					});
+					next();
+				},
+			attemptToMessage2 = function() {
 					eventSources[0].pretendMessage({
 						command: 'queueitem',
 						seqId: 'cars@3',
@@ -162,7 +187,7 @@ describe('SyncItControl',function() {
 							"m":"another",
 							"u":{ "$set": {"Drive":"4WD"} },
 							"o":"update",
-							"t":1393446188229
+							"t":1393446188230
 						}
 					});
 					syncIt.listenForFed(function() {
@@ -174,17 +199,14 @@ describe('SyncItControl',function() {
 							});
 							expect(
 								stateConfig.getItem('cars')
-							).to.equal(
-								'cars@' + 
-								(parseInt(seqId.replace(/.*@/, ''), 10) + 1)
-							);
+							).to.equal('cars@3');
 							done();
 						});
 					});
 				}
 		;
 		
-		stateConfig.setItem(initialDataset, null);
+		stateConfig.setItem(true, initialDataset, null);
 		
 		var syncItControl = new SyncItControl(
 			syncIt,
@@ -197,8 +219,7 @@ describe('SyncItControl',function() {
 		
 		syncItControl.on('advanced-queueitem', function(queueitem) {
 			expect(queueitem.k).to.equal('bmw');
-			expect(stateConfig.getItem(initialDataset)).to.equal('cars@2');
-			attemptToMessage();
+			attemptToMessageSelf(attemptToMessage2);
 		});
 		
 		eventSourceMonitor.on('added-managed-connection', function() {
@@ -261,7 +282,7 @@ describe('SyncItControl',function() {
 					return eventSources[0];
 				},
 			eventSourceMonitor = new EventSourceMonitor(fakeEventSourceFactory),
-			stateConfig = getStateConfig(localStorage, userId);
+			stateConfig = getStoreSequenceId(localStorage, userId);
 		
 		var conflictResolutionFunction = function() { expect().fail(); },
 			uploadChangeFunc = function() { expect().fail(); },
@@ -292,7 +313,7 @@ describe('SyncItControl',function() {
 				},
 			initialDataset = 'cars';
 		
-		stateConfig.setItem(initialDataset, null);
+		stateConfig.setItem(true, initialDataset, null);
 		
 		eventSourceMonitor.on('added-managed-connection', function() {
 			eventSources[0].open();
@@ -339,7 +360,7 @@ describe('SyncItControl',function() {
 					return eventSources[0];
 				},
 			eventSourceMonitor = new EventSourceMonitor(fakeEventSourceFactory),
-			stateConfig = getStateConfig(localStorage, userId),
+			stateConfig = getStoreSequenceId(localStorage, userId),
 			addMonitoredDatasetsCalled = [],
 			addedPlanes = false;
 		
@@ -372,7 +393,7 @@ describe('SyncItControl',function() {
 				},
 			initialDataset = 'cars';
 		
-		stateConfig.setItem(initialDataset, null);
+		stateConfig.setItem(true, initialDataset, null);
 		
 		eventSourceMonitor.on('added-managed-connection', function() {
 			eventSources[0].open();
@@ -429,7 +450,7 @@ describe('SyncItControl',function() {
 					return eventSources[0];
 				},
 			eventSourceMonitor = new EventSourceMonitor(fakeEventSourceFactory),
-			stateConfig = getStateConfig(localStorage, userId),
+			stateConfig = getStoreSequenceId(localStorage, userId),
 			synchedCount = 0,
 			errorCount = 0,
 			uploadAttempts = 0,
@@ -491,6 +512,84 @@ describe('SyncItControl',function() {
 	});
 	
 	
+	it('will not store the state of events until synched', function(done) {
+		
+		this.timeout(5000);
+		
+		var userId = 'user-aaa',
+			localStorage = new FakeLocalStorage(),
+			syncIt = getSyncIt(localStorage, userId),
+			eventSources = [],
+			fakeEventSourceFactory = function(url) {
+					eventSources.unshift(new FakeEventSource(url));
+					return eventSources[0];
+				},
+			eventSourceMonitor = new EventSourceMonitor(fakeEventSourceFactory),
+			stateConfig = getStoreSequenceId(localStorage, userId),
+			uploadChangeFunc = function(queueitem, next) {
+					next(null, null);
+				},
+			downloadDatasetFunc = function(dataset, from, next) {
+					/* global setTimeout: false */
+					setTimeout(function() {
+						return next(null, [], null);
+					}, 1000);
+				},
+			fedCount = 0
+		;
+		
+		var conflictResolutionFunction = function() { expect().fail(); };
+		
+		var syncItControl = new SyncItControl(
+			syncIt,
+			eventSourceMonitor,
+			stateConfig,
+			downloadDatasetFunc,
+			uploadChangeFunc,
+			conflictResolutionFunction
+		);
+
+		eventSourceMonitor.on('added-managed-connection', function() {
+			eventSources[0].open();
+		});
+		
+		syncIt.listenForFed(function() {
+			syncIt.get('cars', 'subaru', function(e, data) {
+				expect(e).to.equal(0);
+				expect(data).to.eql({
+					'Drive': '4WD'
+				});
+				fedCount = fedCount + 1;
+				expect(
+					stateConfig.getItem('cars')
+				).to.equal(fedCount === 2 ? 'cars@2' : null);
+				if (fedCount === 2) {
+					done();
+				}
+			});
+		});
+
+		syncItControl.on('entered-state', function(state) {
+			if (['missing_dataset__downloading', 'synched'].indexOf(state) < 0) { return; }
+			eventSources[0].pretendMessage({
+				command: 'queueitem',
+				seqId: 'cars@' + (state === 'synched' ? 2 : 1),
+				queueitem: {
+					"s":"cars",
+					"k":"subaru",
+					"b": (state === 'synched' ? 1 : 0),
+					"m":"another",
+					"u":{ "$set": {"Drive":"4WD"} },
+					"o":"update",
+					"t":1393446188230
+				}
+			});
+		});
+
+		syncItControl.addMonitoredDataset('cars');
+
+	});
+		
 	it('it can reconnect and handle non uploads', function(done) {
 		
 		this.timeout(5000);
@@ -504,7 +603,7 @@ describe('SyncItControl',function() {
 					return eventSources[0];
 				},
 			eventSourceMonitor = new EventSourceMonitor(fakeEventSourceFactory),
-			stateConfig = getStateConfig(localStorage, userId),
+			stateConfig = getStoreSequenceId(localStorage, userId),
 			synchedCount = 0
 		;
 		

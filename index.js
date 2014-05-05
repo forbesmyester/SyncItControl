@@ -96,7 +96,7 @@ synced events when it enters Pushing Discovery and Synched Statuses.
 
 */
 
-var Cls = function(syncIt, eventSourceMonitor, stateConfig, downloadDatasetFunc, uploadChangeFunc, conflictResolutionFunction) {
+var Cls = function(syncIt, eventSourceMonitor, storeSequenceId, downloadDatasetFunc, uploadChangeFunc, conflictResolutionFunction) {
 	this._syncIt = syncIt;
 	this._eventSourceMonitor = eventSourceMonitor;
 	this._downloadDatasetFunc = downloadDatasetFunc;
@@ -104,7 +104,7 @@ var Cls = function(syncIt, eventSourceMonitor, stateConfig, downloadDatasetFunc,
 	this._datasets = [];
 	this._addMonitoredCallbacks = {};
 	this._conflictResolutionFunction = conflictResolutionFunction;
-	this._stateConfig = stateConfig;
+	this._storeSequenceId = storeSequenceId;
 	this._nextState = false;
 	this._isInDebugMode = true;
 	this._transitionState = (function() {
@@ -138,10 +138,7 @@ var Cls = function(syncIt, eventSourceMonitor, stateConfig, downloadDatasetFunc,
 
 Cls.prototype._addDebug = function(/* Variable set of parameters */) {
 	if (!this._isInDebugMode) { return; }
-	var debug = this._stateConfig.getItem('_debug');
-	if (debug === null) { debug = []; }
-	debug.push(arguments);
-	this._stateConfig.setItem('_debug', debug);
+	return;
 };
 
 Cls.prototype.addMonitoredDataset = function(datasetName, callback) {
@@ -196,7 +193,7 @@ Cls.prototype.connect = function() {
 
 Cls.prototype._process = function() {
 	
-	var stateConfig = this._stateConfig,
+	var storeSequenceId = this._storeSequenceId,
 		datasets = this._datasets,
 		transitionState = this._transitionState,
 		eventSourceMonitor = this._eventSourceMonitor,
@@ -208,12 +205,12 @@ Cls.prototype._process = function() {
 		reRetryDone = false,
 		connectedUrl = false,
 		addMonitoredCallbacks = this._addMonitoredCallbacks,
-		addDebug = this._addDebug.bind(this);
+		addDebug = this._addDebug.bind(this)
 	;
 	
 	var getUnknownDataset = function() {
 		var i, l,
-			knownDatasets = stateConfig.findKeys('*'),
+			knownDatasets = storeSequenceId.findKeys('*'),
 			r = [];
 		for (i=0, l=datasets.length; i<l ; i++) {
 			if (knownDatasets.indexOf(datasets[i]) == -1) {
@@ -236,7 +233,7 @@ Cls.prototype._process = function() {
 				return whenNode.call(
 					downloadDatasetFunc,
 					dataset,
-					stateConfig.getItem(dataset)
+					storeSequenceId.getItem(dataset)
 				);
 			};
 		
@@ -300,6 +297,7 @@ Cls.prototype._process = function() {
 			return;
 		}
 		feedOneDatasetIntoSyncIt(
+			(transitionState.current() == 'SYNCHED'),
 			data.queueitem.s,
 			[data.queueitem],
 			data.seqId,
@@ -313,8 +311,8 @@ Cls.prototype._process = function() {
 		);
 	});
 	
-	var feedOneDatasetIntoSyncIt = function(dataset, queueitems, toDatasetVersion, next) {
-		addDebug('FEED: ', dataset, queueitems, toDatasetVersion);
+	var feedOneDatasetIntoSyncIt = function(fromDownloadOrSynched, dataset, queueitems, toDatasetVersion, next) {
+		addDebug('FEED: ', fromDownloadOrSynched, dataset, queueitems, toDatasetVersion);
 		syncIt.feed(
 			queueitems,
 			conflictResolutionFunction,
@@ -326,10 +324,10 @@ Cls.prototype._process = function() {
 				}
 				if (typeof toDatasetVersion !== 'undefined') {
 					addDebug('FEED_CALLBACK_SET_TO_DATASET_VERSION: ', toDatasetVersion);
-					stateConfig.setItem(dataset, toDatasetVersion);
+					storeSequenceId.setItem(fromDownloadOrSynched, dataset, toDatasetVersion);
 				} else {
 					addDebug('FEED_CALLBACK_THROW: ', toDatasetVersion);
-					throw "Attempting to store undefined within stateConfig(" +
+					throw "Attempting to store undefined within storeSequenceId(" +
 						dataset + ")";
 				}
 				next(err);
@@ -377,18 +375,12 @@ Cls.prototype._process = function() {
 			}
 			if (typeof to === 'undefined') {
 				addDebug('QUEUEITEM_UPLOADED_THROW: ', queueitem, to);
-				throw "Attempting to store undefined within stateConfig(" +
+				throw "Attempting to store undefined within storeSequenceId(" +
 					queueitem.s + ")";
 			}
 			addDebug('QUEUEITEM_UPLOADED: ', queueitem, to);
 			emit('uploaded-queueitem', queueitem, to);
-			syncIt.advance(function(e) {
-				if (e === SyncItConstant.Error.OK) {
-					addDebug('STATECONFIG_SET: ', queueitem, to);
-					stateConfig.setItem(queueitem.s, to);
-				}
-				thenContinue(e, next);
-			});
+			syncIt.advance(function(e) { thenContinue(e, next); });
 		};
 
 		var getQueueitemFromSyncIt = function(next) {
@@ -493,12 +485,25 @@ Cls.prototype._process = function() {
 		case 'ADDING_DATASET__DOWNLOADING':	 /* falls through */
 			doDownloads(datasets, function(err, datasetsData) {
 				
+				var recordDatasetsIfNotKnown = function(datasets) {
+					var i, l;
+					for (i=0, l=datasets.length; i<l; i++) {
+						if (storeSequenceId.getItem(datasets[i])) {
+							continue;
+						}
+						storeSequenceId.setItem(true, datasets[i], null);
+					}
+				};
+
+				recordDatasetsIfNotKnown(datasets);
+
 				var erroredDatasets = [],
 					feedWorker = function(ob, done) {
 							if (ob.queueitems.length === 0) {
 								return done(null); 
 							}
 							feedOneDatasetIntoSyncIt(
+								true,
 								ob.dataset,
 								ob.queueitems,
 								ob.toVersion,
@@ -515,7 +520,7 @@ Cls.prototype._process = function() {
 				feedQueue.on('new-queue-length', function(l) {
 					if (l === 0) {
 						arrayMap(erroredDatasets, function(eds) {
-							stateConfig.setItem(eds, null);
+							storeSequenceId.setItem(true, eds, null);
 							emit(
 								'feed-version-error',
 								eds
