@@ -43,6 +43,10 @@ Cls.prototype.setItem = function(sureAmSynced, dataset, fromSequenceId) {
 
 	current = this._stateConfig.getItem(dataset);
 
+	if ((current === null) && (fromSequenceId === null)) {
+		this._stateConfig.setItem(dataset, null);
+	}
+
 	this._changes[dataset].push(fromSequenceId);
 	this._changes[dataset].push(this._stateConfig.getItem(dataset));
 

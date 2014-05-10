@@ -33,10 +33,12 @@
 var StateConfig = function() {
 	this.changes = [];
 	this.current = null;
+	this.key = null;
 };
 
-StateConfig.prototype.setItem = function(_, v) {
+StateConfig.prototype.setItem = function(k, v) {
 	this.current = v;
+	this.key = k;
 };
 
 StateConfig.prototype.getItem = function() {
@@ -47,6 +49,15 @@ var cmpFunc = function(a, b) { return a<b?-1:1; };
 
 describe('storeSequenceId',function() {
 
+	it('if we are sure we are in adding things in order from the server', function() {
+
+		// add the change if greated
+		var stateConfig = new StateConfig();
+		var storeSequenceId = new StoreSequenceId(stateConfig, cmpFunc);
+		storeSequenceId.setItem(true, 'bob', null);
+		expect(stateConfig.key).to.equal('bob');
+	
+	});
 	it('if we are sure we are in adding things in order from the server', function() {
 
 		// add the change if greated
