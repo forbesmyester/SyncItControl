@@ -1,13 +1,13 @@
 (function (root, factory) { // UMD from https://github.com/umdjs/umd/blob/master/returnExports.js
 	"use strict";
 	if (typeof exports === 'object') {
-		module.exports = factory(require('add-events'));
+		module.exports = factory(require('mout/array/filter'));
 	} else if (typeof define === 'function' && define.amd) {
-		define(['add-events'],factory);
+		define(['mout/array/filter'],factory);
 	} else {
 		throw "Not currently tested!";
 	}
-}(this, function () {
+}(this, function (arrayFilter) {
 
 "use strict";
 
@@ -43,17 +43,20 @@ Cls.prototype.setItem = function(sureAmSynced, dataset, fromSequenceId) {
 
 	current = this._stateConfig.getItem(dataset);
 
-	if (current === null) {
-		return this._stateConfig.setItem(dataset, fromSequenceId);
-	}
-
-	if (current !== null) {
-		this._changes[dataset].push(this._stateConfig.getItem(dataset));
-	}
-
 	this._changes[dataset].push(fromSequenceId);
+	this._changes[dataset].push(this._stateConfig.getItem(dataset));
+
+	this._changes[dataset] = arrayFilter(this._changes[dataset], function(element) {
+		return element !== null;
+	});
+	
+	if (this._changes[dataset].length === 0) { return; }
+
 	this._changes[dataset] = this._changes[dataset].sort(this._compareFunc);
-	if (this._compareFunc(current, this._changes[dataset].slice(-1)[0]) < 0) {
+	if (
+		(current === null) || 
+		(this._compareFunc(current, this._changes[dataset].slice(-1)[0]) < 0)
+	) {
 		this._stateConfig.setItem(dataset, this._changes[dataset].slice(-1)[0]);
 	}
 

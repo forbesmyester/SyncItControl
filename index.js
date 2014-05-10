@@ -483,7 +483,20 @@ Cls.prototype._process = function() {
 		case 'ALL_DATASET__DOWNLOADING':  /* falls through */
 		case 'MISSING_DATASET__DOWNLOADING':  /* falls through */
 		case 'ADDING_DATASET__DOWNLOADING':	 /* falls through */
+			var countToLoad = function(ob) {
+				var r = 0;
+				for (var k in ob) {
+					if (ob.hasOwnProperty(k)) {
+						if (ob[k].hasOwnProperty('data')) {
+							r = r + ob[k].data.length;
+						}
+					}
+				}
+				return r;
+			};
 			doDownloads(datasets, function(err, datasetsData) {
+
+				emit('downloaded', countToLoad(datasetsData));
 				
 				var recordDatasetsIfNotKnown = function(datasets) {
 					var i, l;
@@ -502,6 +515,7 @@ Cls.prototype._process = function() {
 							if (ob.queueitems.length === 0) {
 								return done(null); 
 							}
+							setTimeout(function() {
 							feedOneDatasetIntoSyncIt(
 								true,
 								ob.dataset,
@@ -514,6 +528,7 @@ Cls.prototype._process = function() {
 									done(null);
 								}
 							);
+							},1000);
 						},
 					feedQueue = new EmittingQueue(feedWorker);
 				
@@ -595,7 +610,8 @@ addEvents(Cls, [
 	'error-advancing-queueitem',
 	'entered-state',
 	'error-cycle-caused-stoppage',
-	'feed-version-error'
+	'feed-version-error',
+	'downloaded'
 ]);
 
 
