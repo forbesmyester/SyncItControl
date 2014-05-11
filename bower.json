@@ -1,7 +1,7 @@
 {
   "name": "syncit-control",
   "main": "index.js",
-  "version": "0.9.9",
+  "version": "0.9.10",
   "homepage": "https://github.com/forbesmyester/SyncItControl",
   "authors": [
     "Matthew Forrester <matt@keyboardwritescode.com>"
