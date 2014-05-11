@@ -199,7 +199,7 @@ describe('SyncItControl',function() {
 							});
 							expect(
 								stateConfig.getItem('cars')
-							).to.equal('cars@3');
+							).to.equal('cars@1');
 							done();
 						});
 					});

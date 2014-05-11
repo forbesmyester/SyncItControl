@@ -515,20 +515,19 @@ Cls.prototype._process = function() {
 							if (ob.queueitems.length === 0) {
 								return done(null); 
 							}
-							setTimeout(function() {
 							feedOneDatasetIntoSyncIt(
 								true,
 								ob.dataset,
 								ob.queueitems,
 								ob.toVersion,
 								function(err) {
+									storeSequenceId.setItem(true, ob.dataset, ob.toVersion);
 									if (err === 24) {
 										erroredDatasets.push(ob.dataset);
 									}
 									done(null);
 								}
 							);
-							},1000);
 						},
 					feedQueue = new EmittingQueue(feedWorker);
 				
