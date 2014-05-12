@@ -384,7 +384,7 @@ Cls.prototype._process = function() {
 		};
 
 		var getQueueitemFromSyncIt = function(next) {
-			syncIt.getFirst(function(err, pathItem) {
+			syncIt.getFirstInDatasets(datasets, function(err, pathItem) {
 				var ok = [SyncItConstant.Error.NO_DATA_FOUND, SyncItConstant.Error.OK];
 				if (ok.indexOf(err) === -1) {
 					return next(err);
