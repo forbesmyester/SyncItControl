@@ -609,10 +609,9 @@ describe('SyncItControl',function() {
 		
 		var conflictResolutionFunction = function() { expect().fail(); },
 			downloadDatasetFunc = function(dataset, from, next) {
-					return next(null, [], null);
-				},
+				return next(null, [], null);
+			},
 			uploadChangeFunc = function(queueitem, next) {
-				next(null, null);
 				expect(stateConfig.getItem('cars')).to.equal(null);
 				syncIt.getFirst(function(err, data) {
 					expect(err).to.equal(0);
