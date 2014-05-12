@@ -1,6 +1,6 @@
 {
   "name": "syncit-control",
-  "version": "0.9.12",
+  "version": "0.9.13",
   "description": "Manages SyncIt and EventSourceMonitor to hopefully produce a simple API which can help you create full SyncIt based projects, easily",
   "author": "Matthew Forrester <matt@keyboardwritescode.com>",
   "scripts": {
@@ -12,7 +12,7 @@
     "get_tlid_encoder_decoder": "~0.9.1",
     "mout": "~0.9.0",
     "re": "~0.1.1-2",
-    "sync-it": "^0.9.11",
+    "sync-it": "^0.9.12",
     "transition-state": "~0.9.0",
     "when": "~2.8.0"
   },
