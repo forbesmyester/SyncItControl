@@ -564,7 +564,7 @@ Cls.prototype._process = function() {
 			if (oldState.match(/^MISSING/)) {
 				emit('available', getBaseEventObj());
 			}
-			syncIt.getFirst(function(err) {
+			syncIt.getFirstInDatasets(datasets, function(err) {
 				if (err == SyncItConstant.Error.NO_DATA_FOUND) {
 					return transitionState.change('SYNCHED');
 				}
