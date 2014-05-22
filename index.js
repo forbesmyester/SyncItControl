@@ -1,35 +1,4 @@
-(function (root, factory) { // UMD from https://github.com/umdjs/umd/blob/master/returnExports.js
-	"use strict";
-	if (typeof exports === 'object') {
-		module.exports = factory(
-			require('add-events'),
-			require('transition-state'),
-			require('sync-it/syncItCallbackToPromise'),
-			require('re'),
-			require('mout/array/map'),
-			require('mout/object/map'),
-			require('./emitting-queue'),
-			require('when/keys'),
-			require('when/node/function'),
-			require('sync-it/Constant')
-		);
-	} else if (typeof define === 'function' && define.amd) {
-		define([
-			'add-events',
-			'transition-state',
-			'sync-it/syncItCallbackToPromise',
-			're',
-			'mout/array/map',
-			'mout/object/map',
-			'./emitting-queue',
-			'when/keys',
-			'when/node/function',
-			'sync-it/Constant'
-		],factory);
-	} else {
-		throw "Not Tested";
-	}
-}(this, function (addEvents, TransitionState, syncItCallbackToPromise, Re, arrayMap, objectMap, EmittingQueue, whenKeys, whenNode, SyncItConstant) {
+module.exports = (function (addEvents, TransitionState, syncItCallbackToPromise, Re, arrayMap, objectMap, EmittingQueue, whenKeys, whenNode, SyncItConstant) {
 
 "use strict";
 
@@ -616,4 +585,15 @@ addEvents(Cls, [
 
 return Cls;
 
-}));
+}(
+	require('add-events'),
+	require('transition-state'),
+	require('sync-it/syncItCallbackToPromise'),
+	require('re'),
+	require('mout/array/map'),
+	require('mout/object/map'),
+	require('./emitting-queue'),
+	require('when/keys'),
+	require('when/node/function'),
+	require('sync-it/Constant')
+));

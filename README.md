@@ -29,3 +29,7 @@ On the client you have Both SyncIt and SyncItControl. Your App will perform `get
 ## How do you use SyncItControl?
 
 Right now the only source of information is in the [SyncItTodoMVC](https://github.com/forbesmyester/SyncItTodoMvc) source code, but there will be more complete instructions soon!
+
+## Source Code
+
+Source code is prepared using [Browserify](http://browserify.org/) which is also compatible with Node.JS. There is a UMD bundle which can be used with AMD or a vanilla browser (where it will export a global called called SyncItControl.

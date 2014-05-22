@@ -1,13 +1,4 @@
-(function (root, factory) { // UMD from https://github.com/umdjs/umd/blob/master/returnExports.js
-	"use strict";
-	if (typeof exports === 'object') {
-		module.exports = factory(require('add-events'));
-	} else if (typeof define === 'function' && define.amd) {
-		define(['add-events'],factory);
-	} else {
-		throw "Not currently tested!";
-	}
-}(this, function (addEvents) {
+module.exports = (function (addEvents) {
 
 "use strict";
 
@@ -78,4 +69,4 @@ addEvents(EmittingQueue, ['item-processed', 'item-could-not-be-processed', 'new-
 
 return EmittingQueue;
 
-}));
+}(require('add-events')));

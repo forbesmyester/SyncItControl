@@ -1,13 +1,4 @@
-(function (root, factory) { // UMD from https://github.com/umdjs/umd/blob/master/returnExports.js
-	"use strict";
-	if (typeof exports === 'object') {
-		module.exports = factory(require('mout/array/filter'));
-	} else if (typeof define === 'function' && define.amd) {
-		define(['mout/array/filter'],factory);
-	} else {
-		throw "Not currently tested!";
-	}
-}(this, function (arrayFilter) {
+module.exports = (function (arrayFilter) {
 
 "use strict";
 
@@ -70,5 +61,5 @@ Cls.prototype.setItem = function(sureAmSynced, dataset, fromSequenceId) {
 
 return Cls;
 
-}));
+}(require('mout/array/filter')));
 
