@@ -1,70 +1,7 @@
 module.exports = (function (addEvents, TransitionState, syncItCallbackToPromise, Re, arrayMap, objectMap, EmittingQueue, whenKeys, whenNode, SyncItConstant) {
 
 "use strict";
-
-/*										 |
-										 |
-										 v
-								  +-------------+
-						   +------+	  Analyze	+------+
-						   |	  +-------------+	   |
-						   |						   |
-   +-------------------+   |   +-------------------+   |   +-------------------+
-   |	ALL_DATASET	   |   |   |  MISSING_DATASET  |   |   |   ADDING_DATASET  |
-   |-------------------|   |   |-------------------|   |   |-------------------|
-   |				   |   |   |				   |   |   |				   |
-   |  +-------------+  |   |   |  +-------------+  |   |   |				   |
-   |  |	  Offline	|<-----+----->|	  Offline	|  |   |   |				   |
-   |  +------+------+  |	   |  +------+------+  |   |   |				   |
-   |		 |		   |	   |		 |		   |   |   |				   |
-   |		 v		   |	   |		 v		   |   |   |				   |
-   |  +-------------+  |	   |  +-------------+  |   |   |  +-------------+  |
-   |  | Connecting	|  |	   |  | Connecting	|  |   +----->| Connecting	|  |
-   |  +------+------+  |	   |  +------+------+  |	   |  +------+------+  |
-   |		 |		   |	   |		 |		   |	   |		 |		   |
-   |		 v		   |	   |		 v		   |	   |		 v		   |
-   |  +-------------+  |	   |  +-------------+  |	   |  +-------------+  |
-   |  | Downloading |  |	   |  | Downloading |  |	   |  | Downloading |  |
-   |  +------+------+  |	   |  +------+------+  |	   |  +------+------+  |
-   |		 |		   |	   |		 |		   |	   |		 |		   |
-   +---------|---------+	   +---------|---------+	   +---------|---------+
-			 |							 |							 |
-			 +---------------------------+---------------------------+
-										 |
-										 v
-							   +-------------------+
-							   | Pushing Discovery |<--+
-							   +---------+---------+   |
-										 |			   |
-										 v			   |
-							   +-------------------+   |
-							   |	 Pushing	   +---+
-							   +---------+---------+
-										 |
-										 v
-							   +-------------------+
-							   |	 Synched	   |
-							   +-------------------+
-
-Current State Diagram... Any state shown can go to unshown Error state, which
-can only lead to the Analyze state.
-
-Analyze will end up going to either one of three states:
-
- 1. All Dataset - If all datasets are known.
- 2. Missing Dataset - If we know that we are completely lacking any of the
-	datasets which was passed into the constructor.
- 3. Adding Dataset - If all previous datasets were known but we have added one
-	which is unknown.
-	
-Of these statuses Downloading in All Dataset as well as Connecting and 
-Downloading of Adding Dataset are all classed as online and will fire the 
-online event. Connecting and Downloading will fire the adding-new-dataset and
-added-new-dataset respectively. From these statuses it will fire pushing and
-synced events when it enters Pushing Discovery and Synched Statuses.
-
-*/
-
+ 
 var Cls = function(syncIt, eventSourceMonitor, storeSequenceId, downloadDatasetFunc, uploadChangeFunc, conflictResolutionFunction) {
 	this._syncIt = syncIt;
 	this._eventSourceMonitor = eventSourceMonitor;
