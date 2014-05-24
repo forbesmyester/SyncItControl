@@ -4,3 +4,4 @@ if [ ! -d bin/README/img ]; then
 fi
 mkdir -p bin/README/img
 cat README.eco-system.dot | dot -Gdpi=64 -Tpng:cairo:cairo > bin/README/img/eco-system.png
+dia -e bin/README/img/process.png -O /tmp README.process.dia
