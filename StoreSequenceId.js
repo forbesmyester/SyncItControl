@@ -20,6 +20,31 @@ Cls.prototype.findKeys = function(q) {
 	return this._stateConfig.findKeys(q);
 };
 
+Cls.prototype._flushDataset = function(dataset) {
+	this._changes[dataset].push(this._stateConfig.getItem(dataset));
+
+	this._changes[dataset] = arrayFilter(this._changes[dataset], function(element) {
+		return element !== null;
+	});
+
+	if (this._changes[dataset].length === 0) {
+		return this._stateConfig.setItem(dataset, null);
+	}
+
+	this._stateConfig.setItem(dataset, this._changes[dataset].sort(this._compareFunc).pop());
+
+	this._changes[dataset] = [];
+};
+
+Cls.prototype.flush = function() {
+	var k;
+	for (k in this._changes) {
+		if (this._changes.hasOwnProperty(k)) {
+			this._flushDataset(k);
+		}
+	}
+};
+
 Cls.prototype.setItem = function(sureAmSynced, dataset, fromSequenceId) {
 
 	var current;
@@ -28,34 +53,13 @@ Cls.prototype.setItem = function(sureAmSynced, dataset, fromSequenceId) {
 		this._changes[dataset] = [];
 	}
 
-	if (!sureAmSynced) {
-		return this._changes[dataset].push(fromSequenceId);
-	}
-
-	current = this._stateConfig.getItem(dataset);
-
-	if ((current === null) && (fromSequenceId === null)) {
-		this._stateConfig.setItem(dataset, null);
-	}
-
 	this._changes[dataset].push(fromSequenceId);
-	this._changes[dataset].push(this._stateConfig.getItem(dataset));
 
-	this._changes[dataset] = arrayFilter(this._changes[dataset], function(element) {
-		return element !== null;
-	});
-	
-	if (this._changes[dataset].length === 0) { return; }
-
-	this._changes[dataset] = this._changes[dataset].sort(this._compareFunc);
-	if (
-		(current === null) || 
-		(this._compareFunc(current, this._changes[dataset].slice(-1)[0]) < 0)
-	) {
-		this._stateConfig.setItem(dataset, this._changes[dataset].slice(-1)[0]);
+	if (!sureAmSynced) {
+		return;
 	}
 
-	this._changes[dataset] = [];
+	this.flush();
 
 };
 

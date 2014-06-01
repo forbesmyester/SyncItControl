@@ -1,7 +1,7 @@
 module.exports = (function (addEvents, TransitionState, syncItCallbackToPromise, Re, arrayMap, objectMap, EmittingQueue, whenKeys, whenNode, SyncItConstant) {
 
 "use strict";
- 
+
 var Cls = function(syncIt, eventSourceMonitor, storeSequenceId, downloadDatasetFunc, uploadChangeFunc, conflictResolutionFunction) {
 	this._syncIt = syncIt;
 	this._eventSourceMonitor = eventSourceMonitor;
@@ -65,18 +65,18 @@ Cls.prototype.addMonitoredDataset = function(datasetName, callback) {
 			'PUSHING': {now: false, toState: 'ADDING_DATASET__CONNECTING'},
 			'ERROR': {now: false, toState: 'RESET'}
 		};
-	
-	if (this._datasets.indexOf(datasetName) !== -1) { 
+
+	if (this._datasets.indexOf(datasetName) !== -1) {
 		if (callback !== undefined) {
 			return callback(null, false, this._datasets);
 		}
 		return;
 	}
-	
+
 	if (callback !== undefined) {
 		this._addMonitoredCallbacks[datasetName] = callback;
 	}
-	
+
 	this._datasets.push(datasetName);
     this._datasets.sort();
 	if (!transitions.hasOwnProperty(this._transitionState.current())) {
@@ -90,15 +90,19 @@ Cls.prototype.addMonitoredDataset = function(datasetName, callback) {
 	this._addDebug('ADDING_DATASET_DELAYED: ' + datasetName);
 	this._nextState = transitions[this._transitionState.current()].toState;
 };
-    
+
 Cls.prototype.connect = function() {
     if (this._transitionState.current() !== 'DISCONNECTED') { return false; }
 	this._addDebug('CONNECT: RESET');
     this._transitionState.change('RESET');
 };
 
+Cls.prototype.getState = function() {
+	return this._transitionState.current();
+};
+
 Cls.prototype._process = function() {
-	
+
 	var storeSequenceId = this._storeSequenceId,
 		datasets = this._datasets,
 		transitionState = this._transitionState,
@@ -113,7 +117,7 @@ Cls.prototype._process = function() {
 		addMonitoredCallbacks = this._addMonitoredCallbacks,
 		addDebug = this._addDebug.bind(this)
 	;
-	
+
 	var getUnknownDataset = function() {
 		var i, l,
 			knownDatasets = storeSequenceId.findKeys('*'),
@@ -125,13 +129,13 @@ Cls.prototype._process = function() {
 		}
 		return r;
 	};
-	
+
 	var getBaseEventObj = function() {
 		return { datasets: datasets };
 	};
-	
+
 	var doDownloads = function(datasets, next) {
-		
+
 		var downloadPromises = {},
 			i,
 			l,
@@ -142,11 +146,11 @@ Cls.prototype._process = function() {
 					storeSequenceId.getItem(dataset)
 				);
 			};
-		
+
 		for (i=0, l=datasets.length; i<l; i++) {
 			downloadPromises[datasets[i]] = downloadDataset(datasets[i]);
 		}
-		
+
 		whenKeys.all(downloadPromises).done(
 			function(allData) {
 				var retData = objectMap(allData, function(ar) {
@@ -160,9 +164,9 @@ Cls.prototype._process = function() {
 			}
 		);
 	};
-	
+
 	/**
-	 * Will move from something like ALL_DATASET__[existingPrepend] to 
+	 * Will move from something like ALL_DATASET__[existingPrepend] to
 	 * ALL_DATASET__[newPrepend]
 	 */
 	var transitionWithinStatePath = function(existingPrepend, newPrepend) {
@@ -174,7 +178,7 @@ Cls.prototype._process = function() {
 			);
 		}
 	};
-	
+
 	var eventSourceChangeFunc = function(connObj) {
 		var urls = connObj.url.split('.');
 		addDebug('EVENTSOURCE_CHANGE_URL: ', connObj.url);
@@ -188,16 +192,16 @@ Cls.prototype._process = function() {
 		connectedUrl = connObj.url;
 		transitionWithinStatePath('CONNECTING', 'DOWNLOADING');
 	};
-	
+
 	eventSourceMonitor.on('connected', eventSourceChangeFunc);
-	
+
 	eventSourceMonitor.on('url-changed', eventSourceChangeFunc);
-	
+
 	eventSourceMonitor.on('disconnected', function() {
 		connectedUrl = [];
 		transitionState.change('DISCONNECTED');
 	});
-	
+
 	eventSourceMonitor.on('messaged', function(data) {
 		if (!data.hasOwnProperty('command') || data.command != 'queueitem') {
 			return;
@@ -216,7 +220,7 @@ Cls.prototype._process = function() {
 			}
 		);
 	});
-	
+
 	var feedOneDatasetIntoSyncIt = function(fromDownloadOrSynched, dataset, queueitems, toDatasetVersion, next) {
 		addDebug('FEED: ', fromDownloadOrSynched, dataset, queueitems, toDatasetVersion);
 		syncIt.feed(
@@ -240,11 +244,11 @@ Cls.prototype._process = function() {
 			}
 		);
 	};
-	
+
 	var pushChangesToServer = (function() {
-		
+
 		var pushUploadQueue;
-		
+
 		var uploadError = function(e, queueitem) {
 			addDebug('UPLOAD_ERROR: ', e, queueitem);
 			pushUploadQueue.empty();
@@ -303,7 +307,7 @@ Cls.prototype._process = function() {
 				);
 			});
 		};
-		
+
 		var getAndQueue = function() {
 			getQueueitemFromSyncIt(function(e, data) {
 				if (e) { return transitionState.change('ERROR'); }
@@ -313,7 +317,7 @@ Cls.prototype._process = function() {
 				pushUploadQueue.push(data);
 			});
 		};
-		
+
 		pushUploadQueue = new EmittingQueue(uploadChangeFunc);
 		pushUploadQueue.on('item-processed', function(queueitem, to) {
 			queueitemUploaded(queueitem, to, function() {
@@ -323,13 +327,13 @@ Cls.prototype._process = function() {
 		pushUploadQueue.on('item-could-not-be-processed', uploadError);
 		return getAndQueue;
 	}());
-	
+
 	var processStateChange = function(oldState, currentState) {
-		
+
 		var nextState;
-		
+
 		addDebug('ENTERED_STATE: ', oldState, currentState, this._nextState);
-		
+
 		if (this._nextState) {
 			if (currentState !== 'ERROR') {
 				nextState = this._nextState;
@@ -339,7 +343,7 @@ Cls.prototype._process = function() {
 		}
 
 		emit('entered-state', currentState.toLowerCase());
-		
+
 		switch (currentState) {
 		case 'ERROR':
 			if (reRetryDone !== false) {
@@ -403,7 +407,7 @@ Cls.prototype._process = function() {
 			doDownloads(datasets, function(err, datasetsData) {
 
 				emit('downloaded', countToLoad(datasetsData));
-				
+
 				var recordDatasetsIfNotKnown = function(datasets) {
 					var i, l;
 					for (i=0, l=datasets.length; i<l; i++) {
@@ -419,7 +423,7 @@ Cls.prototype._process = function() {
 				var erroredDatasets = [],
 					feedWorker = function(ob, done) {
 							if (ob.queueitems.length === 0) {
-								return done(null); 
+								return done(null);
 							}
 							feedOneDatasetIntoSyncIt(
 								true,
@@ -436,7 +440,7 @@ Cls.prototype._process = function() {
 							);
 						},
 					feedQueue = new EmittingQueue(feedWorker);
-				
+
 				feedQueue.on('new-queue-length', function(l) {
 					if (l === 0) {
 						arrayMap(erroredDatasets, function(eds) {
@@ -452,7 +456,7 @@ Cls.prototype._process = function() {
 						return transitionState.change('PUSHING_DISCOVERY');
 					}
 				});
-				
+
 				objectMap(
 					datasetsData,
 					function(oneData, dataset) {
@@ -463,7 +467,7 @@ Cls.prototype._process = function() {
 						});
 					}
 				);
-				
+
 			});
 			break;
 		case 'PUSHING_DISCOVERY':
@@ -484,26 +488,27 @@ Cls.prototype._process = function() {
 			pushChangesToServer();
 			break;
 		case 'SYNCHED':
+			storeSequenceId.flush();
 			if (reRetryDone !== false) {
 				reRetryDone(null);
 			}
 			break;
 		}
 	}.bind(this);
-	
+
 	transitionState.on('changed-state', processStateChange);
 	transitionState.on('initial-state', function(state) {
 		processStateChange(null, state);
 	});
-	
+
 	syncIt.listenForAddedToPath(function() {
         if (transitionState.current() === 'SYNCHED') {
             transitionState.change('PUSHING_DISCOVERY');
         }
 	});
-	
+
 	transitionState.start();
-	
+
 };
 
 addEvents(Cls, [

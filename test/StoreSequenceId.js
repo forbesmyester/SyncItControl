@@ -56,7 +56,7 @@ describe('storeSequenceId',function() {
 		var storeSequenceId = new StoreSequenceId(stateConfig, cmpFunc);
 		storeSequenceId.setItem(true, 'bob', null);
 		expect(stateConfig.key).to.equal('bob');
-	
+
 	});
 	it('if we are sure we are in adding things in order from the server', function() {
 
@@ -93,6 +93,23 @@ describe('storeSequenceId',function() {
 
 	});
 
+	it('test the flush method', function() {
+
+		// add three changes, with the latest in the middle
+		var stateConfig = new StateConfig();
+		var storeSequenceId = new StoreSequenceId(stateConfig, cmpFunc);
+		storeSequenceId.setItem(false, 'bob', 'a');
+		storeSequenceId.setItem(false, 'bob', 'e');
+		storeSequenceId.setItem(false, 'bob', 'c');
+
+		// Flush the data
+		storeSequenceId.flush();
+
+		// now test that the latest the middle of the first three
+		expect(stateConfig.getItem()).to.equal('e');
+
+	});
+
 	it('a quick test to make sure it considers the sure one when there is already unsure', function() {
 
 		// add three changes, with the latest in the middle
@@ -102,10 +119,10 @@ describe('storeSequenceId',function() {
 		storeSequenceId.setItem(false, 'bob', 'e');
 		storeSequenceId.setItem(false, 'bob', 'c');
 
-		// add another one which is not the highest
+		// add another one which is the highest
 		storeSequenceId.setItem(true, 'bob', 'g');
 
-		// now test that the latest the middle of the first three
+		// check it picked up the last one.
 		expect(stateConfig.getItem()).to.equal('g');
 
 	});

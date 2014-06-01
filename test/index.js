@@ -40,7 +40,7 @@
 		// Browser globals (root is window)
 		throw "Not currently tested...";
 	}
-}(this, function (expect, getTLIdEncoderDecoder, EventSourceMonitor, SyncIt, 
+}(this, function (expect, getTLIdEncoderDecoder, EventSourceMonitor, SyncIt,
 	SyncItBuffer, FakeLocalStorage, SyncLocalStorage, AsyncLocalStorage,
 	Path_AsyncLocalStorage, StoreSequenceId, SyncItControl) {
 
@@ -50,21 +50,21 @@
 		this._url = url;
 		this.readyState = 0;
 	};
-	
+
 	FakeEventSource.prototype.open = function() {
 		this.readyState = 1;
 		this.onopen({currentTarget: this});
 	};
-	
+
 	FakeEventSource.prototype.close = function() {
 		this.readyState = 2;
 	};
-	
+
 	FakeEventSource.prototype.pretendDisconnected = function() {
 		this.readyState = 2;
 		this.onerror({currentTarget: this});
 	};
-	
+
 	FakeEventSource.prototype.pretendMessage = function(msg) {
 		this.readyState = 1;
 		this.onmessage({
@@ -83,7 +83,7 @@ var getStoreSequenceId = function(localStorage, userId) {
 			JSON.stringify,
 			JSON.parse
 		);
-	
+
 	return new StoreSequenceId(
 		stateConfig,
 		tLEncoderDecoder.sort
@@ -102,22 +102,22 @@ var getSyncIt = function(localStorage, userId) {
 			asyncLocalStorage,
 			tLEncoderDecoder
 		);
-		
+
 	return new SyncItBuffer(new SyncIt(pathstore, userId));
 };
 
 
 
 describe('SyncItControl',function() {
-	
+
 	it('standard use case with all dataset known', function(done) {
-		
+
 		/*
 		This will use already known datasets, download changes, add some data
 		which will then be uploaded. After all that a message will be recieved
 		which will cause the data to appear in the local SyncIt.
 		*/
-		
+
 		var userId = 'user-aaa',
 			localStorage = new FakeLocalStorage(),
 			syncIt = getSyncIt(localStorage, userId),
@@ -131,7 +131,7 @@ describe('SyncItControl',function() {
 			eventSourceMonitor = new EventSourceMonitor(fakeEventSourceFactory),
 			stateConfig = getStoreSequenceId(localStorage, userId)
 		;
-		
+
 		var conflictResolutionFunction = function() { expect().fail(); },
 			downloadDatasetFunc = function(dataset, from, next) {
 					eventOrder.push('downloads-started');
@@ -205,9 +205,9 @@ describe('SyncItControl',function() {
 					});
 				}
 		;
-		
+
 		stateConfig.setItem(true, initialDataset, null);
-		
+
 		var syncItControl = new SyncItControl(
 			syncIt,
 			eventSourceMonitor,
@@ -216,27 +216,27 @@ describe('SyncItControl',function() {
 			uploadChangeFunc,
 			conflictResolutionFunction
 		);
-		
+
 		syncItControl.on('advanced-queueitem', function(queueitem) {
 			expect(queueitem.k).to.equal('bmw');
 			attemptToMessageSelf(attemptToMessage2);
 		});
-		
+
 		eventSourceMonitor.on('added-managed-connection', function() {
 			eventOrder.push('added-managed-connection');
 			eventSources[0].open();
 		});
-		
+
 		syncItControl.on('available', function(evt) {
 			eventOrder.push('available');
 			expect(evt.datasets).to.eql([initialDataset]);
 		});
-		
+
 		syncItControl.on('uploaded-queueitem', function(queueitem, to) {
 			expect(queueitem.k).to.equal('bmw');
 			expect(to).to.equal('cars@2');
 		});
-		
+
 		syncItControl.on('entered-state', function(state) {
 			if (state !== 'synched') { return; }
 			eventOrder.push('synched');
@@ -259,20 +259,20 @@ describe('SyncItControl',function() {
 				});
 			}
 		});
-		
+
 		syncItControl.addMonitoredDataset(initialDataset, function() {
 			eventOrder.push('addMonitoredDataset');
 		});
-		
+
 	});
-	
+
 	it('adding datasets use case (when synched)', function(done) {
-		
+
 		/*
 		Tests that we stay connected and online when adding completely unknown
 		datasets
 		*/
-		
+
 		var userId = 'user-aaa',
 			localStorage = new FakeLocalStorage(),
 			syncIt = getSyncIt(localStorage, userId),
@@ -283,7 +283,7 @@ describe('SyncItControl',function() {
 				},
 			eventSourceMonitor = new EventSourceMonitor(fakeEventSourceFactory),
 			stateConfig = getStoreSequenceId(localStorage, userId);
-		
+
 		var conflictResolutionFunction = function() { expect().fail(); },
 			uploadChangeFunc = function() { expect().fail(); },
 			downloadDatasetFunc = function(dataset, from, next) {
@@ -312,13 +312,13 @@ describe('SyncItControl',function() {
 					);
 				},
 			initialDataset = 'cars';
-		
+
 		stateConfig.setItem(true, initialDataset, null);
-		
+
 		eventSourceMonitor.on('added-managed-connection', function() {
 			eventSources[0].open();
 		});
-		
+
 		var syncItControl = new SyncItControl(
 			syncIt,
 			eventSourceMonitor,
@@ -327,7 +327,7 @@ describe('SyncItControl',function() {
 			uploadChangeFunc,
 			conflictResolutionFunction
 		);
-		
+
 		syncItControl.on('entered-state', function(state) {
 			if (state !== 'synched') { return; }
 			syncItControl.addMonitoredDataset('planes');
@@ -340,17 +340,17 @@ describe('SyncItControl',function() {
 				});
 			});
 		});
-		
+
 		syncItControl.addMonitoredDataset(initialDataset);
 	});
-	
+
 	it('adding datasets use case (when pushing-discovery)', function(done) {
-		
+
 		/*
-		Tests that we can add datasets before being synched but that it will 
+		Tests that we can add datasets before being synched but that it will
 		also wait for the next state change.
 		*/
-		
+
 		var userId = 'user-aaa',
 			localStorage = new FakeLocalStorage(),
 			syncIt = getSyncIt(localStorage, userId),
@@ -363,7 +363,7 @@ describe('SyncItControl',function() {
 			stateConfig = getStoreSequenceId(localStorage, userId),
 			addMonitoredDatasetsCalled = [],
 			addedPlanes = false;
-		
+
 		var conflictResolutionFunction = function() { expect().fail(); },
 			uploadChangeFunc = function() { expect().fail(); },
 			downloadDatasetFunc = function(dataset, from, next) {
@@ -392,13 +392,13 @@ describe('SyncItControl',function() {
 					);
 				},
 			initialDataset = 'cars';
-		
+
 		stateConfig.setItem(true, initialDataset, null);
-		
+
 		eventSourceMonitor.on('added-managed-connection', function() {
 			eventSources[0].open();
 		});
-		
+
 		var syncItControl = new SyncItControl(
 			syncIt,
 			eventSourceMonitor,
@@ -407,7 +407,7 @@ describe('SyncItControl',function() {
 			uploadChangeFunc,
 			conflictResolutionFunction
 		);
-		
+
 		syncItControl.on('entered-state', function(state) {
 			if (state != 'pushing_discovery') { return; }
 			syncItControl.addMonitoredDataset('planes', function(e, newDs, nowConnected) {
@@ -418,7 +418,7 @@ describe('SyncItControl',function() {
 				expect(nowConnected).to.eql(['cars', 'planes']);
 			});
 		});
-		
+
 		syncItControl.on('entered-state', function(state) {
 			if (state !== 'synched') { return; }
 			syncIt.get('planes', 'lear', function(err, data) {
@@ -428,7 +428,7 @@ describe('SyncItControl',function() {
 				done();
 			});
 		});
-		
+
 		syncItControl.addMonitoredDataset(initialDataset, function(e, newDs, nowConnected) {
 			expect(e).to.equal(null);
 			expect(newDs).to.eql(true);
@@ -436,11 +436,11 @@ describe('SyncItControl',function() {
 			expect(nowConnected).to.eql(['cars']);
 		});
 	});
-	
+
 	it('it can recover from errors', function(done) {
-		
+
 		this.timeout(5000);
-		
+
 		var userId = 'user-aaa',
 			localStorage = new FakeLocalStorage(),
 			syncIt = getSyncIt(localStorage, userId),
@@ -456,7 +456,7 @@ describe('SyncItControl',function() {
 			uploadAttempts = 0,
 			uploadedQueueitem = null
 		;
-		
+
 		var conflictResolutionFunction = function() { expect().fail(); },
 			downloadDatasetFunc = function(dataset, from, next) {
 					return next(null, [], null);
@@ -472,7 +472,7 @@ describe('SyncItControl',function() {
 				},
 			initialDataset = 'cars'
 		;
-		
+
 		var syncItControl = new SyncItControl(
 			syncIt,
 			eventSourceMonitor,
@@ -481,16 +481,16 @@ describe('SyncItControl',function() {
 			uploadChangeFunc,
 			conflictResolutionFunction
 		);
-		
+
 		syncItControl.on('error-uploading-queueitem', function(_, queueitem) {
 			uploadAttempts++;
 			expect(queueitem.s).to.equal('cars');
 		});
-		
+
 		eventSourceMonitor.on('added-managed-connection', function() {
 			eventSources[0].open();
 		});
-		
+
 		syncItControl.on('entered-state', function(state) {
 			if (state !== 'synched') { return; }
 			if (++synchedCount == 2) {
@@ -503,19 +503,15 @@ describe('SyncItControl',function() {
 				expect(e).to.equal(0);
 			});
 		});
-		
-		// syncItControl.on('entered-state', function(state) {
-		// 	console.log("CURRENT_STATE: ", state);
-		// });
-		
+
 		syncItControl.addMonitoredDataset(initialDataset);
 	});
-	
-	
+
+
 	it('will not store the state of events until synched', function(done) {
-		
+
 		this.timeout(5000);
-		
+
 		var userId = 'user-aaa',
 			localStorage = new FakeLocalStorage(),
 			syncIt = getSyncIt(localStorage, userId),
@@ -537,9 +533,21 @@ describe('SyncItControl',function() {
 				},
 			fedCount = 0
 		;
-		
+
+		var localStorageSetItem = localStorage.setItem;
+		localStorage.setItem = function(k, v) {
+			localStorageSetItem.call(localStorage,k, v);
+			if (
+				(syncItControl.getState() === 'SYNCHED') &&
+				(v !== null)
+			) {
+				expect(v.indexOf('cars@1')).to.be.greaterThan(-1);
+				done();
+			}
+		}
+
 		var conflictResolutionFunction = function() { expect().fail(); };
-		
+
 		var syncItControl = new SyncItControl(
 			syncIt,
 			eventSourceMonitor,
@@ -552,7 +560,7 @@ describe('SyncItControl',function() {
 		eventSourceMonitor.on('added-managed-connection', function() {
 			eventSources[0].open();
 		});
-		
+
 		syncIt.listenForFed(function() {
 			syncIt.get('cars', 'subaru', function(e, data) {
 				expect(e).to.equal(0);
@@ -560,40 +568,36 @@ describe('SyncItControl',function() {
 					'Drive': '4WD'
 				});
 				fedCount = fedCount + 1;
-				expect(
-					stateConfig.getItem('cars')
-				).to.equal(fedCount === 2 ? 'cars@2' : null);
-				if (fedCount === 2) {
-					done();
-				}
+				expect(stateConfig.getItem('cars')).to.equal(null);
 			});
 		});
 
 		syncItControl.on('entered-state', function(state) {
-			if (['missing_dataset__downloading', 'synched'].indexOf(state) < 0) { return; }
-			eventSources[0].pretendMessage({
-				command: 'queueitem',
-				seqId: 'cars@' + (state === 'synched' ? 2 : 1),
-				queueitem: {
-					"s":"cars",
-					"k":"subaru",
-					"b": (state === 'synched' ? 1 : 0),
-					"m":"another",
-					"u":{ "$set": {"Drive":"4WD"} },
-					"o":"update",
-					"t":1393446188230
-				}
-			});
+			if (['missing_dataset__downloading'].indexOf(state) > -1) {
+				eventSources[0].pretendMessage({
+					command: 'queueitem',
+					seqId: 'cars@' + (state === 'synched' ? 2 : 1),
+					queueitem: {
+						"s":"cars",
+						"k":"subaru",
+						"b": (state === 'synched' ? 1 : 0),
+						"m":"another",
+						"u":{ "$set": {"Drive":"4WD"} },
+						"o":"update",
+						"t":1393446188230
+					}
+				});
+			}
 		});
 
 		syncItControl.addMonitoredDataset('cars');
 
 	});
-		
+
 	it('it can reconnect and handle non uploads', function(done) {
-		
+
 		this.timeout(5000);
-		
+
 		var userId = 'user-aaa',
 			localStorage = new FakeLocalStorage(),
 			syncIt = getSyncIt(localStorage, userId),
@@ -606,7 +610,7 @@ describe('SyncItControl',function() {
 			stateConfig = getStoreSequenceId(localStorage, userId),
 			synchedCount = 0
 		;
-		
+
 		var conflictResolutionFunction = function() { expect().fail(); },
 			downloadDatasetFunc = function(dataset, from, next) {
 				return next(null, [], null);
@@ -621,7 +625,7 @@ describe('SyncItControl',function() {
 			},
 			initialDataset = 'cars'
 		;
-		
+
 		var syncItControl = new SyncItControl(
 			syncIt,
 			eventSourceMonitor,
@@ -630,11 +634,11 @@ describe('SyncItControl',function() {
 			uploadChangeFunc,
 			conflictResolutionFunction
 		);
-		
+
 		eventSourceMonitor.on('added-managed-connection', function() {
 			eventSources[0].open();
 		});
-		
+
 		syncItControl.on('entered-state', function(state) {
 			if (synchedCount > 0) { return; }
 			if (state !== 'synched') { return; }
@@ -650,10 +654,7 @@ describe('SyncItControl',function() {
 			});
 			syncItControl.connect();
 		});
-		
-		// syncItControl.on('entered-state', function(state) {
-		// console.log("CURRENT_STATE: ", state);
-		// });
+
 		syncItControl.addMonitoredDataset(initialDataset);
 	});
 
