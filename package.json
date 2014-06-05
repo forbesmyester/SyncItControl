@@ -14,7 +14,7 @@
     "re": "~0.1.1-2",
     "sync-it": "^0.9.14",
     "transition-state": "^0.9.2",
-    "when": "~2.8.0"
+    "when": "^3.2.2"
   },
   "devDependencies": {
     "browserify-middleware": "^3.0.0",
