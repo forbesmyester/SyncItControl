@@ -91,7 +91,7 @@ var Control = function(syncIt, eventSourceMonitor, asyncLocalStorage,uploadChang
 
 	var connectedHandler = function(connObj) {
 		this._currentUrl = connObj.url;
-		this._perhapsFireMonitoredCallbacks.bind(false, connObj.url)
+		this._perhapsFireMonitoredCallbacks(false, connObj.url);
 	}.bind(this);
 
 	this._eventSourceMonitor.on('url-changed', connectedHandler);
@@ -104,13 +104,13 @@ var Control = function(syncIt, eventSourceMonitor, asyncLocalStorage,uploadChang
 	}.bind(this));
 };
 
-Control.prototype._perhapsFireMonitoredCallbacks = function(downloaded, connDetails) {
+Control.prototype._perhapsFireMonitoredCallbacks = function(downloaded, currentUrl) {
 
-	var doIt = function(versionData) {
+	var doIt = function(knownDatasets) {
 		this._monitoredCallbacks = this._prepareForConnectedCallbacks(
 			this._monitoredCallbacks,
-			connDetails,
-			versionData
+			currentUrl,
+			knownDatasets
 		);
 		this._fireWaitingMonitoredCallbacks();
 	}.bind(this);
@@ -119,10 +119,10 @@ Control.prototype._perhapsFireMonitoredCallbacks = function(downloaded, connDeta
 		return doIt(true);
 	}
 
-	this._getDatasetVersionsPromise().done(
-		doIt,
-		this._gotoError.bind(this)
-	);
+	this._asyncLocalStorage.findKeys('*', function(datasets) {
+		doIt(datasets);
+	});
+
 };
 
 Control.prototype._fireWaitingMonitoredCallbacks = function() {
@@ -163,10 +163,7 @@ Control.prototype._prepareForConnectedCallbacks = function(monitoredCallbacks, c
 	monitoredCallbacks = arrayMap(monitoredCallbacks, function(callbackData) {
 		arrayMap(currentDatasets, function(dataset) {
 			if (callbackData === null) { return null; }
-			if (
-				(versionData === true) ||
-				(versionData.hasOwnProperty(dataset) && versionData[dataset])
-			) {
+			if ((versionData === true) || (versionData.indexOf(dataset) > -1)) {
 				callbackData.datasets = removeDataset(callbackData.datasets, dataset);
 			}
 		});
@@ -184,7 +181,7 @@ Control.prototype._gotoError = function() {
 	this._transitionState.change('ERROR');
 };
 
-Control.prototype._getDatasetVersionsPromise = function() {
+Control.prototype._getKnownDatasetVersionsPromise = function() {
 
 	var me = this;
 
@@ -201,7 +198,7 @@ Control.prototype._getDatasetVersionsPromise = function() {
 
 Control.prototype._stateAnalyze = function() {
 	var me = this;
-	this._getDatasetVersionsPromise().done(
+	this._getKnownDatasetVersionsPromise().done(
 		function(datasetAndVersions) {
 			var haveNulls = false;
 			objectMap(datasetAndVersions, function(v) {
@@ -229,7 +226,7 @@ Control.prototype._stateAddDataset = function(whenAvailable) {
 		return encodeURIComponent(key + '[' + dataset + ']') + '=' + strVersion;
 	};
 
-	this._getDatasetVersionsPromise().done(
+	this._getKnownDatasetVersionsPromise().done(
 		function(datasetAndVersions) {
 
 			var url = arrayMap(me._datasets, function(dataset) {
