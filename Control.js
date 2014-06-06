@@ -1,4 +1,4 @@
-module.exports = (function (rekey, addEvents, TransitionState, syncItCallbackToPromise, when, whenNode, whenCallback, whenFunction, arrayFilter, arrayMap, objectMap, objectKeys, SyncIt_Constant) {
+module.exports = (function (rekey, addEvents, TransitionState, syncItCallbackToPromise, when, whenNode, whenCallback, whenFunction, arrayFilter, arrayMap, objectMap, objectKeys, SyncItConstant, SyncItControlBuffer) {
 
 "use strict";
 
@@ -6,7 +6,7 @@ var AVAILABLE_AT_ALREADY = 3,
     AVAILABLE_AT_END = 2,
     AVAILABLE_AT_START = 1;
 
-var Control = function(syncIt, eventSourceMonitor, asyncLocalStorage,uploadChangeFunc, conflictResolutionFunction) {
+var Control = function(syncIt, eventSourceMonitor, asyncLocalStorage, uploadChangeFunc, conflictResolutionFunction) {
 	this._syncIt = syncIt;
 	this._eventSourceMonitor = eventSourceMonitor;
 	this._uploadChangeFunc = uploadChangeFunc;
@@ -16,6 +16,7 @@ var Control = function(syncIt, eventSourceMonitor, asyncLocalStorage,uploadChang
 	this._asyncLocalStorage = asyncLocalStorage;
 	this._connectingDatasets = [];
 	this._connected = false;
+	this._buffer = null;
 	this._transitionState = (function() {
 			var t = new TransitionState('DISCONNECTED'),
 				states = {
@@ -62,7 +63,7 @@ var Control = function(syncIt, eventSourceMonitor, asyncLocalStorage,uploadChang
 		return syncItCallbackToPromise(
 			this._syncIt,
 			this._syncIt.feed,
-			[SyncIt_Constant.Error.OK, SyncIt_Constant.Error.NO_DATA_FOUND],
+			[SyncItConstant.Error.OK, SyncItConstant.Error.NO_DATA_FOUND],
 			data,
 			this._conflictResolutionFunction
 		);
@@ -76,6 +77,10 @@ var Control = function(syncIt, eventSourceMonitor, asyncLocalStorage,uploadChang
 
 		var me = this;
 
+		if (message.command == 'queueitem') {
+			me._buffer.add(message.data);
+		}
+
 		if (message.command == 'download') {
 
 			syncItFeedToPromise(serverMultiDataToArray(message.data)).done(
@@ -85,6 +90,8 @@ var Control = function(syncIt, eventSourceMonitor, asyncLocalStorage,uploadChang
 				},
 				this._gotoError.bind(this)
 			);
+
+			me._buffer.start();
 
 		}
 	}.bind(this));
@@ -214,6 +221,25 @@ Control.prototype._stateAddDataset = function(whenAvailable) {
 
 	var me = this;
 
+	this._buffer = new SyncItControlBuffer(
+		function() { me._transitionState.change('ERROR'); },
+		function(queueitem) {
+			me._syncIt.feed(
+				[ queueitem ],
+				this._conflictResolutionFunction,
+				function(err) {
+					if (err) { return me._transitionState.change('ERROR'); }
+				}
+			);
+		},
+		function(result) {
+			console.log("SyncItControlBuffer: RESULT(" + JSON.stringify(result) + ")");
+		},
+		function() {
+			console.log("SyncItControlBuffer: EMPTY");
+		}
+	);
+
 	if (whenAvailable == AVAILABLE_AT_START) {
 		this._emit('available');
 	}
@@ -276,25 +302,48 @@ Control.prototype._hasSyncItGotDataToPushPromise = function() {
 	return syncItCallbackToPromise(
 		this._syncIt,
 		this._syncIt.getFirstInDatasets,
-		[SyncIt_Constant.Error.OK, SyncIt_Constant.Error.NO_DATA_FOUND],
+		[SyncItConstant.Error.OK, SyncItConstant.Error.NO_DATA_FOUND],
 		this._datasets
 	);
 };
 
-Control.prototype._statePushingDiscovery = function() {
+Control.prototype._findSyncItFirst = function(callbackWhenDataFound) {
 	var transitionState = this._transitionState;
 	when(this._hasSyncItGotDataToPushPromise()).done(
 		function(data) {
 			if (data === null) {
 				return transitionState.change('SYNCHED');
 			}
-			return transitionState.change('PUSHING');
+			return callbackWhenDataFound(data);
 		}.bind(this),
 		this._gotoError.bind(this)
 	);
 };
 
+Control.prototype._statePushingDiscovery = function() {
+	var transitionState = this._transitionState;
+	this._findSyncItFirst(function() {
+		return transitionState.change('PUSHING');
+	});
+};
+
 Control.prototype._statePushing = function() {
+
+	var transitionState = this._transitionState,
+		uploadChangeFunc = this._uploadChangeFunc,
+		syncIt = this._syncIt;
+
+	this._findSyncItFirst(function(queueitem) {
+		uploadChangeFunc(queueitem, function(err) {
+			if (err) { return transitionState.change('ERROR'); }
+			syncIt.advance(function(status) {
+				if (status !== SyncItConstant.Error.OK) {
+					return transitionState.change('ERROR');
+				}
+				return transitionState.change('PUSHING_DISCOVERY');
+			});
+		});
+	});
 };
 
 Control.prototype._stateSynched = function() {
@@ -336,6 +385,7 @@ return Control;
 	require('mout/array/map'),
 	require('mout/object/map'),
 	require('mout/object/keys'),
-	require('sync-it/Constant')
+	require('sync-it/Constant'),
+	require('syncit-control-buffer')
 ));
 
