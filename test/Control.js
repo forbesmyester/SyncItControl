@@ -11,6 +11,7 @@ var
 	SyncItBuffer = require('sync-it/SyncItBuffer'),
 	FakeLocalStorage = require('sync-it/FakeLocalStorage'),
 	AsyncLocalStorage = require('sync-it/AsyncLocalStorage'),
+	addEvents = require('add-events'),
 	Path_AsyncLocalStorage = require('sync-it/Path/AsyncLocalStorage'),
 	Control = require('../Control'),
 	syncItCallbackToPromise = require('sync-it/syncItCallbackToPromise'),
@@ -19,14 +20,45 @@ var
 	whenCallback = require('when/callbacks');
 
 var getAsyncLocalStorage = function(uniq) {
-	return new AsyncLocalStorage(
+	var asyncLocalStorage =  new AsyncLocalStorage(
 		new FakeLocalStorage(),
 		uniq,
 		JSON.stringify,
 		JSON.parse
 	);
+	var EventingAsyncLocalStorage = function(asyncLocalStorage) {
+		this._asyncLocalStorage = asyncLocalStorage;
+	};
+	EventingAsyncLocalStorage.prototype.findKeys = function() {
+		var args = Array.prototype.slice.call(arguments);
+		return this._asyncLocalStorage.findKeys.apply(this._asyncLocalStorage, args);
+	};
+	EventingAsyncLocalStorage.prototype.setItem = function(k, v, next) {
+		var me = this;
+		this._asyncLocalStorage.setItem(k, v, function(e) {
+			next(e);
+			me._emit('setItem', k, v);
+		});
+	};
+	EventingAsyncLocalStorage.prototype.key = function() {
+		var args = Array.prototype.slice.call(arguments);
+		return this._asyncLocalStorage.key.apply(this._asyncLocalStorage, args);
+	};
+	EventingAsyncLocalStorage.prototype.clear = function() {
+		var args = Array.prototype.slice.call(arguments);
+		return this._asyncLocalStorage.clear.apply(this._asyncLocalStorage, args);
+	};
+	EventingAsyncLocalStorage.prototype.getItem = function() {
+		var args = Array.prototype.slice.call(arguments);
+		return this._asyncLocalStorage.getItem.apply(this._asyncLocalStorage, args);
+	};
+	EventingAsyncLocalStorage.prototype.removeItem = function() {
+		var args = Array.prototype.slice.call(arguments);
+		return this._asyncLocalStorage.removeItem.apply(this._asyncLocalStorage, args);
+	};
+	addEvents(EventingAsyncLocalStorage, ['setItem']);
+	return new EventingAsyncLocalStorage(asyncLocalStorage);
 };
-
 
 var tLEncoderDecoder = getTLIdEncoderDecoder(new Date().getTime(), 2);
 
@@ -76,15 +108,48 @@ var getFakeEventSourceFactory = function() {
 	return f;
 };
 
-describe('utility functions', function() {
-	it('has a method called _prepareUrl which will do so', function() {
+describe('utility function', function() {
+	it('called _prepareUrl which will do so', function() {
 		expect(Control._prepareUrl(['a', 'b'], {b: 'v4'})).to.equal('dataset%5Ba%5D=&dataset%5Bb%5D=v4');
+	});
+
+	it('called _getKnownVersionChanges will ensure that only highest versions are stored', function() {
+		var result = Control._getKnownVersionChanges(
+				{
+					a: 'fff',
+					b: 'jjj',
+					c: 'mmm'
+				},
+				{
+					a: [ { _q: 'aaa' }, { _q: 'ggg' } ],
+					b: [ { _q: 'aaa' } ],
+					d: [ { _q: 'ttt' } ]
+				}
+			),
+			expected = { a: 'ggg', d: 'ttt' };
+
+		expect(result).to.eql(expected);
+	});
+	it('can convert array to messageDownloadFormat', function() {
+		expect(Control._convertToMessageDownloadFormat([
+			{s: 'aaa', k: 'z1'},
+			{s: 'bbb', k: 'z2'},
+			{s: 'aaa', k: 'z3'},
+			{s: 'aaa', k: 'z4'},
+			{s: 'ccc', k: 'z5'}
+		])).to.eql(
+			{
+				aaa: [{s: 'aaa', k: 'z1'}, {s: 'aaa', k: 'z3'}, {s: 'aaa', k: 'z4'}],
+				bbb: [{s: 'bbb', k: 'z2'}],
+				ccc: [{s: 'ccc', k: 'z5'}]
+			}
+		);
 	});
 });
 
 describe('will connect and download ending as synched', function() {
 
-	var runTest = function(controlsAsyncLocalStorage, expectedStateOrder, done) {
+	var runTest = function(controlsAsyncLocalStorage, expectedStateOrder, bVersion, done) {
 
 		var fakeEventSourceFactory = getFakeEventSourceFactory(),
 			syncIt = getSyncIt(getAsyncLocalStorage('s1', 'aa')),
@@ -109,13 +174,13 @@ describe('will connect and download ending as synched', function() {
 		eventSourceMonitor.on('url-changed', function() {
 			fakeEventSourceFactory.eventSources[0].pretendMessage({
 				command: 'queueitem',
-				data: {"s": 'aa', "k": 'aa2', "b":1, "m":"another", "u":{"Size": 'Big'}, "o":"set", "t":1393446188224 }
+				data: {"s": 'aa', "k": 'aa2', "b":1, "m":"another", "u":{"Size": 'Big'}, "o":"set", "t":1393446188224, _q: 'v1' }
 			});
 			fakeEventSourceFactory.eventSources[0].pretendMessage({
 				command: 'download',
 				data: {
-					a: [
-						{"s": 'aa', "k": 'aa2', "b":0, "m":"another", "u":{"Color": 'Red'}, "o":"set", "t":1393446188224 },
+					aa: [
+						{"s": 'aa', "k": 'aa2', "b":0, "m":"another", "u":{"Color": 'Red'}, "o":"set", "t":1393446188224, _q: 'v2' },
 					]
 				}
 			});
@@ -124,14 +189,23 @@ describe('will connect and download ending as synched', function() {
 		syncIt.listenForFed(function(dataset, datakey, queueitem) {
 			if (queueitem.b == 1) {
 				expect(stateOrder).to.eql(expectedStateOrder);
-				syncItCallbackToPromise(
-					syncIt,
-					syncIt.getFull,
-					[SyncItConstant.Error.OK],
-					'aa',
-					'aa2'
-				).done(
-					function(queueitem) {
+				when.all([
+					syncItCallbackToPromise(
+						syncIt,
+						syncIt.getFull,
+						[SyncItConstant.Error.OK],
+						'aa',
+						'aa2'
+					),
+					Control._getKnownDatasetVersionsPromise(
+						controlsAsyncLocalStorage,
+						[ 'aa', 'bb' ]
+					)
+				]).done(
+					function(result) {
+						var queueitem = result[0];
+						var knownDataVersions = result[1];
+						expect(knownDataVersions).to.eql({aa: 'v2', bb: bVersion});
 						expect(queueitem.v).to.equal(2);
 						done();
 					},
@@ -151,6 +225,7 @@ describe('will connect and download ending as synched', function() {
 		runTest(
 			getAsyncLocalStorage('c1', 'aa'),
 			['ANALYZE', 'MISSING_DATASET', 'PUSHING_DISCOVERY', 'add_dataset_callback', 'SYNCHED'],
+			null,
 			done
 		);
 	});
@@ -163,6 +238,7 @@ describe('will connect and download ending as synched', function() {
 			runTest(
 				controlStorage,
 				['ANALYZE', 'MISSING_DATASET', 'PUSHING_DISCOVERY', 'add_dataset_callback', 'SYNCHED'],
+				null,
 				done
 			);
 		});
@@ -180,6 +256,7 @@ describe('will connect and download ending as synched', function() {
 				runTest(
 					controlStorage,
 					['ANALYZE', 'ALL_DATASET', 'add_dataset_callback', 'PUSHING_DISCOVERY', 'SYNCHED'],
+					'bb1',
 					done
 				);
 			},
@@ -294,7 +371,7 @@ describe('will connect and download data, add data in SyncIt then handle conflic
 			syncIt = getSyncIt(getAsyncLocalStorage('s1', 'aa')),
 			eventSourceMonitor = new EventSourceMonitor(fakeEventSourceFactory),
 			conflictResolutionFunction = function(dataset, datakey, storerecord, serverQueueitems, localPathitems, resolved) {
-					resolved(true, [{o: 'update', u: 'Fixed'}]);
+					resolved(true, [{o: 'update', u: { state: 'Fixed' } }]);
 				},
 			control = new Control(
 					syncIt,
@@ -317,8 +394,8 @@ describe('will connect and download data, add data in SyncIt then handle conflic
 			fakeEventSourceFactory.eventSources[0].pretendMessage({
 				command: 'download',
 				data: {
-					a: [
-						{"s": 'aa', "k": 'aa2', "b":0, "m":"another", "u":{"Color": 'Red'}, "o":"set", "t":1393446188224 },
+					aa: [
+						{"s": 'aa', "k": 'aa2', "b":0, "m":"another", "u":{"Color": 'Red'}, "o":"set", "t":1393446188224, _q: 'z1'},
 					]
 				}
 			});
@@ -327,14 +404,19 @@ describe('will connect and download data, add data in SyncIt then handle conflic
 		var doFeedTest = function() {
 			fakeEventSourceFactory.eventSources[0].pretendMessage({
 				command: 'queueitem',
-				data: {"s": 'aa', "k": 'aa2', "b":1, "m":"another", "u":{"Size": 'Big'}, "o":"set", "t":1393446188224 }
+				data: {"s": 'aa', "k": 'aa2', "b":1, "m":"another", "u":{"Size": 'Big'}, "o":"set", "t":139344618822, _q: 'z2'}
 			});
 		};
 
 		var listenForResolved = function() {
 			syncIt.listenForAddedToPath(function(dataset, datakey, queueitem) {
 				expect(queueitem.b).to.equal(2);
-				done();
+			});
+			controlsAsyncLocalStorage.once('setItem', function() {
+				controlsAsyncLocalStorage.getItem('aa', function(v) {
+					expect(v).to.equal('z2');
+					done();
+				});
 			});
 		};
 

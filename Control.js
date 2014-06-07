@@ -61,13 +61,15 @@ var Control = function(syncIt, eventSourceMonitor, asyncLocalStorage, uploadChan
 
 	var syncItFeedToPromise = function(data) {
 		return syncItCallbackToPromise(
-			this._syncIt,
-			this._syncIt.feed,
+			syncIt,
+			syncIt.feed,
 			[SyncItConstant.Error.OK, SyncItConstant.Error.NO_DATA_FOUND],
-			data,
-			this._conflictResolutionFunction
-		);
-	}.bind(this);
+			serverMultiDataToArray(data),
+			conflictResolutionFunction
+		).then(function() {
+			return data;
+		});
+	};
 
 	this._eventSourceMonitor.on('messaged', function(message) {
 
@@ -75,41 +77,62 @@ var Control = function(syncIt, eventSourceMonitor, asyncLocalStorage, uploadChan
 			return;
 		}
 
-		var me = this;
-
 		if (message.command == 'queueitem') {
 			me._buffer.add(message.data);
 		}
 
 		if (message.command == 'download') {
 
-			syncItFeedToPromise(serverMultiDataToArray(message.data)).done(
+			syncItFeedToPromise(message.data).then(
+				Control._updateKnownDatasetVersionsPromise.bind(this, asyncLocalStorage, me._datasets)
+			).done(
 				function() {
 					me._transitionState.change('PUSHING_DISCOVERY');
 					me._perhapsFireMonitoredCallbacks(true, me._currentUrl);
 				},
-				this._gotoError.bind(this)
+				me._gotoError.bind(me)
 			);
 
 			me._buffer.start();
 
 		}
-	}.bind(this));
+	});
 
 	var connectedHandler = function(connObj) {
-		this._currentUrl = connObj.url;
-		this._perhapsFireMonitoredCallbacks(false, connObj.url);
-	}.bind(this);
+		me._currentUrl = connObj.url;
+		me._perhapsFireMonitoredCallbacks(false, connObj.url);
+	};
 
 	this._eventSourceMonitor.on('url-changed', connectedHandler);
 	this._eventSourceMonitor.on('connected', connectedHandler);
 
 	this._transitionState.start();
 	this._transitionState.on('changed-state', function(oldState, newState) {
-		this._emit('entered-state', newState);
-		stateFunctions[newState].call(this, newState);
-	}.bind(this));
+		me._emit('entered-state', newState);
+		stateFunctions[newState].call(me, newState);
+	});
 };
+
+Control._updateKnownDatasetVersionsPromise = function(asyncLocalStorage, datasets, messageData) {
+	return Control._getKnownDatasetVersionsPromise(asyncLocalStorage, datasets).then(
+		function(dataVersions) {
+			var requiredVersionChanges = Control._getKnownVersionChanges(
+				dataVersions,
+				messageData
+			);
+			var r = [];
+			objectMap(requiredVersionChanges, function(version, dataset) {
+				r.push(whenCallback.call(
+					asyncLocalStorage.setItem.bind(asyncLocalStorage),
+					dataset,
+					version
+				));
+			});
+			return when.all(r);
+		}
+	);
+};
+
 
 Control.prototype._perhapsFireMonitoredCallbacks = function(downloaded, currentUrl) {
 
@@ -202,17 +225,45 @@ Control.prototype._gotoError = function() {
 	this._transitionState.change('ERROR');
 };
 
-Control.prototype._getKnownDatasetVersionsPromise = function() {
+Control._getKnownVersionChanges = function(knownDatasetVersions, downloadedData) {
 
-	var me = this;
-
-	var getVersionPromise = function(dataset) {
-		return whenCallback.call(me._asyncLocalStorage.getItem.bind(me._asyncLocalStorage), dataset);
+	var forIndividualDataset = function(knownVersion, downloadedData) {
+		var highest = arrayMap(downloadedData, function(v) { return v._q; }).sort().pop();
+		if (knownVersion === null) { return highest; }
+		return ( highest > knownVersion ) ? highest : null;
 	};
 
-	return when.all(this._datasets.map(getVersionPromise)).then(
+	var r = {};
+
+	objectMap(downloadedData, function(v, k) {
+		var storedVersion = knownDatasetVersions.hasOwnProperty(k) ? knownDatasetVersions[k] : null;
+		var proposed = forIndividualDataset(storedVersion, v);
+		if (proposed !== null) {
+			r[k] = proposed;
+		}
+	});
+
+	return r;
+};
+
+Control.prototype._getKnownDatasetVersionsPromise = function() {
+
+	return Control._getKnownDatasetVersionsPromise(
+		this._asyncLocalStorage,
+		this._datasets
+	);
+
+};
+
+Control._getKnownDatasetVersionsPromise = function(asyncLocalStorage, datasets) {
+
+	var getVersionPromise = function(dataset) {
+		return whenCallback.call(asyncLocalStorage.getItem.bind(asyncLocalStorage), dataset);
+	};
+
+	return when.all(arrayMap(datasets, getVersionPromise)).then(
 		function(versions) {
-			return rekey(me._datasets, versions);
+			return rekey(datasets, versions);
 		}
 	);
 };
@@ -231,27 +282,42 @@ Control.prototype._stateAnalyze = function() {
 	);
 };
 
+Control._convertToMessageDownloadFormat = function(arrayOfQueueitem) {
+	var r = {};
+	arrayMap(arrayOfQueueitem, function(queueitem) {
+		if (!r.hasOwnProperty(queueitem.s)) { r[queueitem.s] = []; }
+		r[queueitem.s].push(queueitem);
+	});
+	return objectMap(r, function(arrayOfQueueitemInDataset) {
+		return arrayOfQueueitemInDataset.sort();
+	});
+};
+
 Control.prototype._stateAddDataset = function(whenAvailable) {
 
 	var me = this;
 
 	this._buffer = new SyncItControlBuffer(
 		function() { me._transitionState.change('ERROR'); },
-		function(queueitem) {
+		function(queueitem, next) {
 			me._syncIt.feed(
 				[ queueitem ],
 				me._conflictResolutionFunction,
 				function(err) {
 					if (err) { return me._transitionState.change('ERROR'); }
+					Control._updateKnownDatasetVersionsPromise(
+						me._asyncLocalStorage,
+						me._datasets,
+						Control._convertToMessageDownloadFormat([queueitem])
+					).done(
+						next,
+						me._gotoError
+					);
 				}
 			);
 		},
-		function(result) {
-			console.log("SyncItControlBuffer: RESULT(" + JSON.stringify(result) + ")");
-		},
-		function() {
-			console.log("SyncItControlBuffer: EMPTY");
-		}
+		function() { },
+		function() { }
 	);
 
 	if (whenAvailable == AVAILABLE_AT_START) {
