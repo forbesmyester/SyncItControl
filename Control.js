@@ -226,7 +226,7 @@ Control.prototype._stateAddDataset = function(whenAvailable) {
 		function(queueitem) {
 			me._syncIt.feed(
 				[ queueitem ],
-				this._conflictResolutionFunction,
+				me._conflictResolutionFunction,
 				function(err) {
 					if (err) { return me._transitionState.change('ERROR'); }
 				}

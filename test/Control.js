@@ -270,10 +270,95 @@ describe('will connect, download then upload ending as synched', function() {
 		});
 	};
 
-	it('it has data to download by no data at all', function(done) {
+	it('it has data to download and will then upload it\'s own', function(done) {
 		runTest(
 			getAsyncLocalStorage('c1', 'aa'),
 			['ANALYZE', 'MISSING_DATASET', 'PUSHING_DISCOVERY', 'add_dataset_callback', 'PUSHING',  'PUSHING_DISCOVERY', 'PUSHING',  'PUSHING_DISCOVERY', 'PUSHING',  'PUSHING_DISCOVERY', 'SYNCHED'],
+			done
+		);
+	});
+
+});
+
+describe('will connect and download data, add data in SyncIt then handle conflict', function() {
+
+	var runTest = function(controlsAsyncLocalStorage, expectedStateOrder, done) {
+
+		var fakeEventSourceFactory = getFakeEventSourceFactory(),
+			syncIt = getSyncIt(getAsyncLocalStorage('s1', 'aa')),
+			eventSourceMonitor = new EventSourceMonitor(fakeEventSourceFactory),
+			conflictResolutionFunction = function(dataset, datakey, storerecord, serverQueueitems, localPathitems, resolved) {
+					resolved(true, [{o: 'update', u: 'Fixed'}]);
+				},
+			control = new Control(
+					syncIt,
+					eventSourceMonitor,
+					controlsAsyncLocalStorage,
+					null, // No uploads will occur
+					conflictResolutionFunction
+				),
+			stateOrder = [];
+
+		control.addDatasets(['aa', 'bb'], function() {
+			stateOrder.push('add_dataset_callback');
+		});
+
+		eventSourceMonitor.on('added-managed-connection', function() {
+			fakeEventSourceFactory.eventSources[0].open();
+		});
+
+		eventSourceMonitor.on('url-changed', function() {
+			fakeEventSourceFactory.eventSources[0].pretendMessage({
+				command: 'download',
+				data: {
+					a: [
+						{"s": 'aa', "k": 'aa2', "b":0, "m":"another", "u":{"Color": 'Red'}, "o":"set", "t":1393446188224 },
+					]
+				}
+			});
+		});
+
+		var doFeedTest = function() {
+			fakeEventSourceFactory.eventSources[0].pretendMessage({
+				command: 'queueitem',
+				data: {"s": 'aa', "k": 'aa2', "b":1, "m":"another", "u":{"Size": 'Big'}, "o":"set", "t":1393446188224 }
+			});
+		};
+
+		var listenForResolved = function() {
+			syncIt.listenForAddedToPath(function(dataset, datakey, queueitem) {
+				expect(queueitem.b).to.equal(2);
+				done();
+			});
+		};
+
+		syncIt.listenForFed(function(dataset, datakey, queueitem) {
+			expect(dataset).to.equal('aa');
+			expect(datakey).to.equal('aa2');
+			if (queueitem.b === 1) {
+				listenForResolved();
+			}
+		});
+
+		control.on('entered-state', function(state) {
+			stateOrder.push(state);
+			if (state === 'SYNCHED') {
+				syncIt.set('aa', 'aa2', { size: 'Big', color: 'Red' }, function(err) {
+					expect(err).to.equal(SyncItConstant.Error.OK);
+					syncIt.getFull('aa', 'aa2', function(status, queueitem) {
+						expect(queueitem.v).to.equal(2);
+						doFeedTest();
+					});
+				});
+			}
+		});
+		control.connect();
+	};
+
+	it('it has data to download by no data at all', function(done) {
+		runTest(
+			getAsyncLocalStorage('c1', 'aa'),
+			['ANALYZE', 'MISSING_DATASET', 'PUSHING_DISCOVERY', 'add_dataset_callback', 'SYNCHED'],
 			done
 		);
 	});
