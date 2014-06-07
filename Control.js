@@ -158,19 +158,33 @@ Control.prototype._extractInfoFromUrl = function(url) {
 	return rekey(keys, values);
 };
 
-Control.prototype._prepareForConnectedCallbacks = function(monitoredCallbacks, currentUrl, versionData) {
+/**
+ * ## Control._prepareForConnectedCallbacks()
+ *
+ * The idea of this function is to remove elements from
+ * monitoredCallbacks[n][datasets] and if the array is empty it is ready to
+ * call the callback.
+ *
+ * ### Parameters
+ *
+ *  * monitoredCallbacks - an array of Objects, when the objects "datasets" key is empty SyncItControl will fire the callback.
+ *  * currentUrl - The URL that the EventSource is connected to.
+ *  * alreadyConnectedDatasets - True or an array of Datasets. Which we already have some information about as we do not wait for the EventSource to connect to these before firing the callback.
+ *
+ */
+Control.prototype._prepareForConnectedCallbacks = function(monitoredCallbacks, currentUrl, alreadyConnectedDatasets) {
 
 	var currentDatasets = objectKeys(this._extractInfoFromUrl(currentUrl)),
 		removeDataset = function(datasets, toRemoveDataset) {
-			return arrayFilter(datasets, function(dataset) {
-				return (dataset !== toRemoveDataset);
-			});
-		};
+				return arrayFilter(datasets, function(dataset) {
+					return (dataset !== toRemoveDataset);
+				});
+			};
 
 	monitoredCallbacks = arrayMap(monitoredCallbacks, function(callbackData) {
+		if (callbackData === null) { return null; }
 		arrayMap(currentDatasets, function(dataset) {
-			if (callbackData === null) { return null; }
-			if ((versionData === true) || (versionData.indexOf(dataset) > -1)) {
+			if ((alreadyConnectedDatasets === true) || (alreadyConnectedDatasets.indexOf(dataset) > -1)) {
 				callbackData.datasets = removeDataset(callbackData.datasets, dataset);
 			}
 		});
@@ -244,6 +258,21 @@ Control.prototype._stateAddDataset = function(whenAvailable) {
 		this._emit('available');
 	}
 
+	this._getKnownDatasetVersionsPromise().done(
+		function(datasetAndVersions) {
+
+			me._eventSourceMonitor.changeUrl(Control._prepareUrl(me._datasets, datasetAndVersions));
+			if (!me._connected) {
+				me._eventSourceMonitor.connect();
+			}
+
+		},
+		this._gotoError.bind(this)
+	);
+};
+
+Control._prepareUrl = function(fullDatasetList, knownDatasetVersions) {
+
 	var prepareUrlPart = function(key, dataset, version) {
 		var strVersion = '';
 		if (version !== null) {
@@ -252,21 +281,13 @@ Control.prototype._stateAddDataset = function(whenAvailable) {
 		return encodeURIComponent(key + '[' + dataset + ']') + '=' + strVersion;
 	};
 
-	this._getKnownDatasetVersionsPromise().done(
-		function(datasetAndVersions) {
-
-			var url = arrayMap(me._datasets, function(dataset) {
-				return prepareUrlPart('dataset', dataset, datasetAndVersions[dataset]);
-			}).join('&');
-
-			me._eventSourceMonitor.changeUrl(url);
-			if (!me._connected) {
-				me._eventSourceMonitor.connect();
-			}
-
-		},
-		this._gotoError.bind(this)
-	);
+	return arrayMap(fullDatasetList, function(dataset) {
+		return prepareUrlPart(
+			'dataset',
+			dataset,
+			knownDatasetVersions.hasOwnProperty(dataset) ? knownDatasetVersions[dataset] : ''
+		);
+	}).join('&');
 };
 
 Control.prototype.addDatasets = function(datasetNames, callback) {

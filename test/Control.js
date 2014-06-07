@@ -76,6 +76,12 @@ var getFakeEventSourceFactory = function() {
 	return f;
 };
 
+describe('utility functions', function() {
+	it('has a method called _prepareUrl which will do so', function() {
+		expect(Control._prepareUrl(['a', 'b'], {b: 'v4'})).to.equal('dataset%5Ba%5D=&dataset%5Bb%5D=v4');
+	});
+});
+
 describe('will connect and download ending as synched', function() {
 
 	var runTest = function(controlsAsyncLocalStorage, expectedStateOrder, done) {
@@ -141,7 +147,7 @@ describe('will connect and download ending as synched', function() {
 		control.connect();
 	};
 
-	it('it has data to download by no data at all', function(done) {
+	it('it has data to download but no data to upload at all', function(done) {
 		runTest(
 			getAsyncLocalStorage('c1', 'aa'),
 			['ANALYZE', 'MISSING_DATASET', 'PUSHING_DISCOVERY', 'add_dataset_callback', 'SYNCHED'],
