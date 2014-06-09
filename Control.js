@@ -41,6 +41,7 @@ var Control = function(syncIt, eventSourceMonitor, asyncLocalStorage, uploadChan
 	var me = this;
 
 	var stateFunctions = {
+		'DISCONNECTED': this._stateDisconnected,
 		'ANALYZE': this._stateAnalyze,
 		'MISSING_DATASET': this._stateAddDataset.bind(this, AVAILABLE_AT_END),
 		'ALL_DATASET': this._stateAddDataset.bind(this, AVAILABLE_AT_START),
@@ -98,6 +99,10 @@ var Control = function(syncIt, eventSourceMonitor, asyncLocalStorage, uploadChan
 		}
 	});
 
+	this._eventSourceMonitor.on('disconnected', function() {
+		me._transitionState.change('DISCONNECTED');
+	});
+
 	var connectedHandler = function(connObj) {
 		me._currentUrl = connObj.url;
 		me._perhapsFireMonitoredCallbacks(false, connObj.url);
@@ -110,6 +115,12 @@ var Control = function(syncIt, eventSourceMonitor, asyncLocalStorage, uploadChan
 	this._transitionState.on('changed-state', function(oldState, newState) {
 		me._emit('entered-state', newState);
 		stateFunctions[newState].call(me, newState);
+	});
+
+	syncIt.listenForAddedToPath(function() {
+        if (me._transitionState.current() === 'SYNCHED') {
+            me._transitionState.change('PUSHING_DISCOVERY');
+        }
 	});
 };
 
@@ -222,13 +233,18 @@ Control.prototype.getCurrentState = function() {
 };
 
 Control.prototype._gotoError = function() {
-	this._transitionState.change('ERROR');
+	throw new Error("AT ERROR");
+	// this._transitionState.change('ERROR');
 };
 
 Control._getKnownVersionChanges = function(knownDatasetVersions, downloadedData) {
 
+	var extractSequenceIdFromQueueitem = function(queueitem) {
+		if (!queueitem.hasOwnProperty('_q')) { return null; }
+		return queueitem._q;
+	};
 	var forIndividualDataset = function(knownVersion, downloadedData) {
-		var highest = arrayMap(downloadedData, function(v) { return v._q; }).sort().pop();
+		var highest = arrayMap(downloadedData, extractSequenceIdFromQueueitem).sort().pop();
 		if (knownVersion === null) { return highest; }
 		return ( highest > knownVersion ) ? highest : null;
 	};
@@ -268,6 +284,8 @@ Control._getKnownDatasetVersionsPromise = function(asyncLocalStorage, datasets) 
 	);
 };
 
+Control.prototype._stateDisconnected = function() { };
+
 Control.prototype._stateAnalyze = function() {
 	var me = this;
 	this._getKnownDatasetVersionsPromise().done(
@@ -298,19 +316,19 @@ Control.prototype._stateAddDataset = function(whenAvailable) {
 	var me = this;
 
 	this._buffer = new SyncItControlBuffer(
-		function() { me._transitionState.change('ERROR'); },
+		function() { me._gotoError(); },
 		function(queueitem, next) {
 			me._syncIt.feed(
 				[ queueitem ],
 				me._conflictResolutionFunction,
 				function(err) {
-					if (err) { return me._transitionState.change('ERROR'); }
+					if (err) { me._gotoError(); }
 					Control._updateKnownDatasetVersionsPromise(
 						me._asyncLocalStorage,
 						me._datasets,
 						Control._convertToMessageDownloadFormat([queueitem])
 					).done(
-						next,
+						function() { next(null); },
 						me._gotoError
 					);
 				}
@@ -422,10 +440,10 @@ Control.prototype._statePushing = function() {
 
 	this._findSyncItFirst(function(queueitem) {
 		uploadChangeFunc(queueitem, function(err) {
-			if (err) { return transitionState.change('ERROR'); }
+			if (err) { return me._gotoError(); }
 			syncIt.advance(function(status) {
 				if (status !== SyncItConstant.Error.OK) {
-					return transitionState.change('ERROR');
+					return me._gotoError();
 				}
 				return transitionState.change('PUSHING_DISCOVERY');
 			});

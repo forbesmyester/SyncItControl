@@ -377,7 +377,7 @@ describe('will connect and download data, add data in SyncIt then handle conflic
 					syncIt,
 					eventSourceMonitor,
 					controlsAsyncLocalStorage,
-					null, // No uploads will occur
+					function() {}, // No uploads will occur
 					conflictResolutionFunction
 				),
 			stateOrder = [];
@@ -447,6 +447,80 @@ describe('will connect and download data, add data in SyncIt then handle conflic
 		runTest(
 			getAsyncLocalStorage('c1', 'aa'),
 			['ANALYZE', 'MISSING_DATASET', 'PUSHING_DISCOVERY', 'add_dataset_callback', 'SYNCHED'],
+			done
+		);
+	});
+
+});
+
+describe('will upload things which are added to syncIt when Synched', function() {
+
+	var runTest = function(controlsAsyncLocalStorage, expectedStateOrder, bVersion, done) {
+
+		var fakeEventSourceFactory = getFakeEventSourceFactory(),
+			syncIt = getSyncIt(getAsyncLocalStorage('s1', 'aa')),
+			eventSourceMonitor = new EventSourceMonitor(fakeEventSourceFactory),
+			uploadedQueueitem = [],
+			firstSynched = true,
+			uploadFunction = function(queueitem, next) {
+					uploadedQueueitem.push(queueitem);
+					next(null, { http_status: 200 });
+				},
+			control = new Control(
+					syncIt,
+					eventSourceMonitor,
+					controlsAsyncLocalStorage,
+					uploadFunction,
+					null
+				),
+			stateOrder = [];
+
+		control.addDatasets(['aa', 'bb'], function() {
+			stateOrder.push('add_dataset_callback');
+		});
+
+		syncIt.listenForAdvanced(function(dataset, datakey) {
+			expect(dataset).to.equal('aa');
+			expect(datakey).to.equal('aa1');
+		});
+
+		eventSourceMonitor.on('added-managed-connection', function() {
+			fakeEventSourceFactory.eventSources[0].open();
+		});
+
+		eventSourceMonitor.on('url-changed', function() {
+			fakeEventSourceFactory.eventSources[0].pretendMessage({
+				command: 'download',
+				data: { aa: [] }
+			});
+		});
+
+		control.on('entered-state', function(state) {
+			stateOrder.push(state);
+			if ((state === 'SYNCHED') && (firstSynched)) {
+				firstSynched = false;
+				syncIt.set('aa', 'aa1', { size: 'Big' }, function(status) {
+					expect(status).to.equal(SyncItConstant.Error.OK);
+				});
+				return;
+			}
+			if (state === 'SYNCHED') {
+				expect(uploadedQueueitem.length).to.equal(1);
+				expect(stateOrder).to.eql(expectedStateOrder);
+				done();
+			}
+		});
+		control.connect();
+	};
+
+	it('standard path', function(done) {
+		runTest(
+			getAsyncLocalStorage('c1', 'aa'),
+			[
+				'ANALYZE', 'MISSING_DATASET', 'PUSHING_DISCOVERY', 'add_dataset_callback',
+				'SYNCHED', 'PUSHING_DISCOVERY', 'PUSHING', 'PUSHING_DISCOVERY',
+				'SYNCHED'],
+			null,
 			done
 		);
 	});
