@@ -243,6 +243,7 @@ Control._getKnownVersionChanges = function(knownDatasetVersions, downloadedData)
 		if (!queueitem.hasOwnProperty('_q')) { return null; }
 		return queueitem._q;
 	};
+
 	var forIndividualDataset = function(knownVersion, downloadedData) {
 		var highest = arrayMap(downloadedData, extractSequenceIdFromQueueitem).sort().pop();
 		if (knownVersion === null) { return highest; }
@@ -252,6 +253,7 @@ Control._getKnownVersionChanges = function(knownDatasetVersions, downloadedData)
 	var r = {};
 
 	objectMap(downloadedData, function(v, k) {
+		if ( (v === null) || (v.length === 0) ) { return; }
 		var storedVersion = knownDatasetVersions.hasOwnProperty(k) ? knownDatasetVersions[k] : null;
 		var proposed = forIndividualDataset(storedVersion, v);
 		if (proposed !== null) {
@@ -351,7 +353,7 @@ Control.prototype._stateAddDataset = function(whenAvailable) {
 			}
 
 		},
-		this._gotoError.bind(this)
+		me._gotoError
 	);
 };
 
@@ -434,18 +436,16 @@ Control.prototype._statePushingDiscovery = function() {
 
 Control.prototype._statePushing = function() {
 
-	var transitionState = this._transitionState,
-		uploadChangeFunc = this._uploadChangeFunc,
-		syncIt = this._syncIt;
+	var me = this;
 
 	this._findSyncItFirst(function(queueitem) {
-		uploadChangeFunc(queueitem, function(err) {
+		me._uploadChangeFunc(queueitem, function(err) {
 			if (err) { return me._gotoError(); }
-			syncIt.advance(function(status) {
+			me._syncIt.advance(function(status) {
 				if (status !== SyncItConstant.Error.OK) {
 					return me._gotoError();
 				}
-				return transitionState.change('PUSHING_DISCOVERY');
+				return me._transitionState.change('PUSHING_DISCOVERY');
 			});
 		});
 	});
