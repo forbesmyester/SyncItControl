@@ -452,10 +452,42 @@ Control.prototype._statePushing = function() {
 };
 
 Control.prototype._stateSynched = function() {
+
+	var me = this;
+
+	syncItCallbackToPromise(
+		this,
+		this.getDatasetNamesFromSequenceData,
+		[SyncItConstant.Error.OK]
+	).then(
+		function(datasets) {
+			var r = [];
+			arrayMap(me._datasets, function(dataset) {
+				if (datasets.indexOf(dataset) === -1) {
+					r.push(dataset);
+				}
+			});
+			return r;
+		}
+	).then(
+		function(datasetsThatNeedCreating) {
+			return arrayMap(datasetsThatNeedCreating, function(dataset) {
+				return whenCallback.call(
+					me._asyncLocalStorage.setItem.bind(me._asyncLocalStorage),
+					dataset,
+					null
+				);
+			});
+		}
+	).done(
+		function() {
+		},
+		me._gotoError.bind(me)
+	);
+
 };
 
-Control.prototype._stateError = function() {
-};
+Control.prototype._stateError = function() { };
 
 Control.prototype.connect = function() {
 	if (['DISCONNECTED', 'ERROR'].indexOf(this._transitionState.current()) == -1) {
