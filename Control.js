@@ -496,6 +496,18 @@ Control.prototype.connect = function() {
 	this._transitionState.change('ANALYZE');
 };
 
+Control.prototype.purge = function(dataset, next) {
+	this._syncIt.purge(dataset, function(status) {
+		if (status !== SyncItConstant.Error.OK) { return next(status); }
+		this._asyncLocalStorage.removeItem(dataset, next);
+	}.bind(this));
+};
+
+Control.prototype.getDatasetNamesFromSequenceData = function(next) {
+	this._asyncLocalStorage.findKeys('*', function(datasetNames) {
+		next(SyncItConstant.Error.OK, datasetNames);
+	});
+};
 
 addEvents(Control, [
 	'available',
