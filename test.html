@@ -9,69 +9,15 @@
 </body>
     <script src="node_modules/jquery/dist/jquery.js"></script>
     <script src="node_modules/mocha/mocha.js"></script>
-    <script src="node_modules/requirejs/require.js"></script>
-    <script src="node_modules/expect.js/expect.js"></script>
+	<script src="test/Control.js"></script>
     
     <script>
-    	
-		require.config({
-			baseUrl: '.',
-			paths: {
-				"sync-it": "node_modules/sync-it",
-				mout: "node_modules/mout/src",
-				re: 'node_modules/re/lib/re'
-			},
-			packages: [
-				{
-					name: 'when',
-					location: 'node_modules/when',
-					main: 'when'
-				},
-				{
-					name: 'add-events',
-					location: 'node_modules/add-events',
-					main: 'index'
-				},
-				{
-					name: 'transition-state',
-					location: 'node_modules/transition-state',
-					main: 'index'
-				},
-				{
-					name: 'getTLIdEncoderDecoder',
-					location: 'node_modules/get_tlid_encoder_decoder',
-					main: 'index'
-				},
-				{
-					name: 'manip',
-					location: 'node_modules/manip',
-					main: 'index'
-				},
-				{
-					name: 'eventsource-monitor',
-					location: 'node_modules/eventsource-monitor',
-					main: 'index'
-				}
-			],
-			shim: {
-				re: { deps: [], exports: 'Re' }
-			}
-		});
-    	
-        $(document).ready(function() {
-            function assert(expr, msg) {
-                if (!expr) throw new Error(msg || 'failed');
-            }
-            require.config({
-                baseUrl: '.',
-            });
-                
+		$(document).ready(function() {
             mocha.setup('bdd')
             mocha.globals(['Module']);
-            require(['./test/index', './test/emitting-queue'], function(index) {
-                mocha.run();
-            });
-        });
+			tests();
+			mocha.run();
+		});
     </script>
 
 </html>
