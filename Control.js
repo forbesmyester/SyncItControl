@@ -20,19 +20,20 @@ var Control = function(syncIt, eventSourceMonitor, asyncLocalStorage, uploadChan
 	this._transitionState = (function() {
 			var t = new TransitionState('DISCONNECTED'),
 				states = {
+					'UPLOAD_ERROR': ['ANALYZE'],
 					'DISCONNECTED': ['ANALYZE'],
 					'ANALYZE': ['MISSING_DATASET', 'ALL_DATASET'],
-					'MISSING_DATASET': ['PUSHING_DISCOVERY', 'DISCONNECTED', 'ERROR'],
-					'ALL_DATASET': ['PUSHING_DISCOVERY', 'DISCONNECTED', 'ERROR'],
-					'ADDING_DATASET': ['PUSHING_DISCOVERY', 'DISCONNECTED', 'ERROR'],
-					'PUSHING_DISCOVERY': ['SYNCHED', 'PUSHING', 'DISCONNECTED', 'ERROR'],
-					'PUSHING': ['PUSHING_DISCOVERY', 'SYNCHED', 'DISCONNECTED', 'ERROR'],
-					'SYNCHED': ['ADDING_DATASET', 'PUSHING_DISCOVERY', 'DISCONNECTED', 'ERROR'],
-					'ERROR': ['DISCONNECTED', 'ERROR']
+					'MISSING_DATASET': ['PUSHING_DISCOVERY', 'DISCONNECTED'],
+					'ALL_DATASET': ['PUSHING_DISCOVERY', 'DISCONNECTED'],
+					'ADDING_DATASET': ['PUSHING_DISCOVERY', 'DISCONNECTED'],
+					'PUSHING_DISCOVERY': ['SYNCHED', 'PUSHING', 'DISCONNECTED'],
+					'PUSHING': ['PUSHING_DISCOVERY', 'SYNCHED', 'DISCONNECTED'],
+					'SYNCHED': ['ADDING_DATASET', 'PUSHING_DISCOVERY', 'DISCONNECTED'],
+					'ERROR': ['DISCONNECTED']
 				};
 			for (var k in states) {
 				if (states.hasOwnProperty(k)) {
-					t.addState(k,states[k]);
+					t.addState(k, states[k].concat(['ERROR', 'UPLOAD_ERROR']));
 				}
 			}
 			return t;
@@ -41,6 +42,7 @@ var Control = function(syncIt, eventSourceMonitor, asyncLocalStorage, uploadChan
 	var me = this;
 
 	var stateFunctions = {
+		'UPLOAD_ERROR': this._stateDisconnected,
 		'DISCONNECTED': this._stateDisconnected,
 		'ANALYZE': this._stateAnalyze,
 		'MISSING_DATASET': this._stateAddDataset.bind(this, AVAILABLE_AT_END),
@@ -440,7 +442,9 @@ Control.prototype._statePushing = function() {
 
 	this._findSyncItFirst(function(queueitem) {
 		me._uploadChangeFunc(queueitem, function(err) {
-			if (err) { return me._gotoError(); }
+			if (err) {
+				return me._transitionState.change('UPLOAD_ERROR');
+			}
 			me._syncIt.advance(function(status) {
 				if (status !== SyncItConstant.Error.OK) {
 					return me._gotoError();
@@ -490,7 +494,7 @@ Control.prototype._stateSynched = function() {
 Control.prototype._stateError = function() { };
 
 Control.prototype.connect = function() {
-	if (['DISCONNECTED', 'ERROR'].indexOf(this._transitionState.current()) == -1) {
+	if (['DISCONNECTED', 'UPLOAD_ERROR', 'ERROR'].indexOf(this._transitionState.current()) == -1) {
 		return;
 	}
 	this._transitionState.change('ANALYZE');
